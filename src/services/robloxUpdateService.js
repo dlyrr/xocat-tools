@@ -179,6 +179,43 @@ async function broadcast(client, kind, update) {
 }
 
 /**
+ * Deliver one update to every user who opted in to DM pings. A closed DM is a
+ * hard failure for that user, so drop the subscription rather than retrying it
+ * on every future update.
+ */
+async function broadcastDMs(client, kind, update) {
+  const subs = dbAll('SELECT * FROM roblox_update_dms').filter(sub => subscriptionWants(sub, kind, update.platform));
+  if (!subs.length) return 0;
+
+  const message = buildUpdateMessage(kind, update);
+  let delivered = 0;
+
+  for (const sub of subs) {
+    try {
+      const user = client.users.cache.get(sub.user_id)
+        || await client.users.fetch(sub.user_id).catch(() => null);
+      if (!user) {
+        dbRun('DELETE FROM roblox_update_dms WHERE user_id = ?', [sub.user_id]);
+        continue;
+      }
+
+      await user.send(message);
+      delivered += 1;
+    } catch (error) {
+      // 50007 = "Cannot send messages to this user" (DMs closed or bot blocked).
+      if (error?.code === 50007) {
+        logger.warn('roblox-updates', `DMs closed for ${sub.user_id} · removing subscription`);
+        dbRun('DELETE FROM roblox_update_dms WHERE user_id = ?', [sub.user_id]);
+      } else {
+        logger.error('roblox-updates', `Could not DM ${sub.user_id}`, error);
+      }
+    }
+  }
+
+  return delivered;
+}
+
+/**
  * One poll cycle. The first time a platform is seen we only record its hash so
  * a fresh database never fires a burst of "updates" for versions already live.
  */
@@ -209,8 +246,11 @@ async function checkOnce(client) {
 
       if (!previous) continue; // Baseline only — nothing to announce yet.
 
-      const delivered = await broadcast(client, kind, update);
-      logger.info('roblox-updates', `${kind} ${platform} → ${update.hash} · announced in ${delivered} channel(s)`);
+      const [channels, dms] = await Promise.all([
+        broadcast(client, kind, update),
+        broadcastDMs(client, kind, update),
+      ]);
+      logger.info('roblox-updates', `${kind} ${platform} → ${update.hash} · ${channels} channel(s), ${dms} DM(s)`);
     }
   }
 }
@@ -229,6 +269,7 @@ function startRobloxUpdateWatcher(client) {
 module.exports = {
   startRobloxUpdateWatcher,
   checkOnce,
+  broadcastDMs,
   buildUpdateMessage,
   readPlatform,
   fetchVersions,

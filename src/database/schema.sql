@@ -104,6 +104,14 @@ CREATE TABLE IF NOT EXISTS roblox_update_subs (
     UNIQUE (guild_id, channel_id)
 );
 
+-- Opt-in personal DM subscriptions for Roblox updates
+CREATE TABLE IF NOT EXISTS roblox_update_dms (
+    user_id TEXT PRIMARY KEY,
+    platforms TEXT NOT NULL DEFAULT 'Windows,Mac,Android,iOS',
+    kinds TEXT NOT NULL DEFAULT 'live,future',
+    created_at INTEGER NOT NULL
+);
+
 -- Last version seen per platform/kind so restarts never re-announce
 CREATE TABLE IF NOT EXISTS roblox_update_state (
     state_key TEXT PRIMARY KEY,   -- e.g. 'live:Windows'

@@ -38,13 +38,14 @@ function describeSub(sub) {
   ].join('\n');
 }
 
-module.exports = {
-  guildOnly: true,
+// Server-wide configuration is limited to admins; `dm` and `test` are open to
+// anyone, so the gate lives in execute() rather than on the whole command.
+const ADMIN_SUBCOMMANDS = new Set(['setup', 'remove', 'list']);
 
+module.exports = {
   data: new SlashCommandBuilder()
     .setName('robloxupdates')
-    .setDescription('Get pinged in this server whenever Roblox updates (powered by WEAO)')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .setDescription('Get pinged whenever Roblox updates (powered by WEAO)')
     .addSubcommand(s => s
       .setName('setup')
       .setDescription('Announce Roblox updates in a channel')
@@ -92,6 +93,33 @@ module.exports = {
       .setDescription('Show this server\'s Roblox update subscriptions')
     )
     .addSubcommand(s => s
+      .setName('dm')
+      .setDescription('Get Roblox updates sent straight to your DMs')
+      .addBooleanOption(o => o
+        .setName('enabled')
+        .setDescription('Turn your personal DM pings on or off')
+        .setRequired(true))
+      .addStringOption(o => o
+        .setName('platforms')
+        .setDescription('Which platforms to watch (default: all)')
+        .addChoices(
+          { name: 'All platforms', value: 'all' },
+          { name: 'Windows & Mac', value: 'desktop' },
+          { name: 'Windows only', value: 'windows' },
+          { name: 'Mac only', value: 'mac' },
+          { name: 'Android only', value: 'android' },
+          { name: 'iOS only', value: 'ios' },
+        ))
+      .addStringOption(o => o
+        .setName('updates')
+        .setDescription('Live updates patch exploits; future updates are upcoming builds (default: both)')
+        .addChoices(
+          { name: 'Live and future updates', value: 'both' },
+          { name: 'Live updates only', value: 'live' },
+          { name: 'Future updates only', value: 'future' },
+        ))
+    )
+    .addSubcommand(s => s
       .setName('test')
       .setDescription('Post a sample announcement using the current Roblox version')
       .addStringOption(o => o
@@ -113,11 +141,22 @@ module.exports = {
     ),
 
   async execute(interaction) {
-    if (!interaction.inGuild()) {
-      return interaction.reply({ content: 'This command only works inside a server.', flags: 64 });
-    }
-
     const sub = interaction.options.getSubcommand();
+
+    if (ADMIN_SUBCOMMANDS.has(sub)) {
+      if (!interaction.inGuild()) {
+        return interaction.reply({
+          content: 'That only works inside a server. Use `/robloxupdates dm enabled:True` to get updates here instead.',
+          flags: 64,
+        });
+      }
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
+        return interaction.reply({
+          content: 'You need the **Manage Server** permission to change this server\'s Roblox update pings. You can still use `/robloxupdates dm enabled:True` for your own DMs.',
+          flags: 64,
+        });
+      }
+    }
     // Config replies stay ephemeral; the preview is posted publicly so admins
     // can see exactly what the server will get.
     await interaction.deferReply(sub === 'test' ? {} : { flags: 64 });
@@ -184,6 +223,44 @@ module.exports = {
           value: `<#${s.channel_id}>\n${describeSub(s)}`,
           inline: false,
         })));
+
+      return interaction.editReply({ embeds: [embed] });
+    }
+
+    if (sub === 'dm') {
+      const enabled = interaction.options.getBoolean('enabled');
+
+      if (!enabled) {
+        const existing = dbGet('SELECT * FROM roblox_update_dms WHERE user_id = ?', [interaction.user.id]);
+        if (!existing) return interaction.editReply('You weren\'t subscribed to Roblox update DMs.');
+        dbRun('DELETE FROM roblox_update_dms WHERE user_id = ?', [interaction.user.id]);
+        return interaction.editReply('Roblox update DMs turned off. Re-enable them any time with `/robloxupdates dm enabled:True`.');
+      }
+
+      const platforms = PLATFORM_PRESETS[interaction.options.getString('platforms') || 'all'];
+      const kinds = KIND_PRESETS[interaction.options.getString('updates') || 'both'];
+
+      // Confirm the DM channel actually opens before promising delivery —
+      // closed DMs would otherwise fail silently at announcement time.
+      try {
+        await interaction.user.createDM();
+      } catch {
+        return interaction.editReply('I can\'t DM you. Enable **Direct Messages** for this server in your privacy settings, then try again.');
+      }
+
+      dbRun(
+        'INSERT INTO roblox_update_dms (user_id, platforms, kinds, created_at) VALUES (?, ?, ?, ?) ' +
+        'ON CONFLICT(user_id) DO UPDATE SET platforms = excluded.platforms, kinds = excluded.kinds',
+        [interaction.user.id, platforms, kinds, Date.now()]
+      );
+
+      const saved = dbGet('SELECT * FROM roblox_update_dms WHERE user_id = ?', [interaction.user.id]);
+
+      const embed = new EmbedBuilder()
+        .setColor(colors.roblox)
+        .setTitle('Roblox update DMs enabled')
+        .setDescription(`I'll DM you every time Roblox updates.\n\n> Platforms: \`${saved.platforms}\`\n> Updates: \`${saved.kinds}\``)
+        .setFooter({ text: 'Powered by WEAO, The #1 Roblox exploit status tracker' });
 
       return interaction.editReply({ embeds: [embed] });
     }
