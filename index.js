@@ -6,6 +6,7 @@ require('dotenv').config();
 const { createClient } = require('./src/bot/client');
 const { createAPIServer } = require('./src/api/server');
 const { initDatabase, dbAll, dbRun } = require('./src/database/db');
+const { startRobloxUpdateWatcher } = require('./src/services/robloxUpdateService');
 const logger = require('./src/utils/logger');
 
 function resolveAPIPort() {
@@ -65,6 +66,10 @@ async function main() {
 
   logger.info('discord', 'Authenticating with Discord gateway…');
   await client.login(process.env.DISCORD_TOKEN);
+
+  // WEAO Roblox update watcher — announces new client versions to every
+  // channel subscribed with /robloxupdates.
+  startRobloxUpdateWatcher(client);
 
   // Timer check loop — check for due timers every 10 seconds
   setInterval(async () => {

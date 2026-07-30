@@ -90,6 +90,28 @@ CREATE TABLE IF NOT EXISTS poll_votes (
     PRIMARY KEY (poll_id, user_id, choice_index)
 );
 
+-- Roblox update ping subscriptions (WEAO version tracker)
+CREATE TABLE IF NOT EXISTS roblox_update_subs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    guild_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    role_id TEXT,                 -- role to ping; NULL = no role ping
+    ping_everyone INTEGER DEFAULT 0,
+    platforms TEXT NOT NULL DEFAULT 'Windows,Mac,Android,iOS',
+    kinds TEXT NOT NULL DEFAULT 'live,future',  -- which update channels to announce
+    created_by TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE (guild_id, channel_id)
+);
+
+-- Last version seen per platform/kind so restarts never re-announce
+CREATE TABLE IF NOT EXISTS roblox_update_state (
+    state_key TEXT PRIMARY KEY,   -- e.g. 'live:Windows'
+    hash TEXT,
+    version TEXT,
+    seen_at INTEGER NOT NULL
+);
+
 -- Moderation history and per-server configuration
 CREATE TABLE IF NOT EXISTS moderation_cases (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
