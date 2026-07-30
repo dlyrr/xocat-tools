@@ -1,4 +1,6 @@
-allowBuilds:
-  ffmpeg-static: set this to true or false
-  sharp: set this to true or false
-  tesseract.js: set this to true or false
+# These three ship native code and must run their install scripts, otherwise
+# image processing, transcoding, and OCR fail at runtime.
+onlyBuiltDependencies:
+  - ffmpeg-static
+  - sharp
+  - tesseract.js
