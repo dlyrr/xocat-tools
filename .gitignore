@@ -1,0 +1,13 @@
+node_modules/
+.env
+*.db
+*.sqlite
+
+# Runtime logs
+*.log
+
+# Tauri control panel lives outside this repo — the host only runs the bot.
+control-panel/
+
+# Local one-off codemods
+scratch/

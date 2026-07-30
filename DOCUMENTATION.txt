@@ -1,0 +1,520 @@
+Discord Bot Documentation
+=========================
+
+Project
+-------
+Name: discord-multibot
+Runtime: Node.js
+Main file: index.js
+Discord library: discord.js v14
+Database: sql.js SQLite database saved to bot.db
+API server: Express, default port 3001
+
+This project is a multi-feature Discord slash-command bot with Roblox,
+utility, social, music, finance, games, admin, and fun commands. It also
+starts a small Express API server for health, stats, and media scraping.
+
+
+Important Security Note
+-----------------------
+Do not publish real tokens, API keys, or bot credentials.
+
+Keep .env.example limited to placeholders. If a live key is ever shared,
+committed, or uploaded, rotate it in the provider dashboard immediately.
+
+Never paste DISCORD_TOKEN, GEMINI_API_KEY, HF_API_TOKEN, weather keys, Genius
+keys, Last.fm keys, or Cat API keys into public documentation.
+
+
+Quick Start
+-----------
+1. Open a terminal in:
+
+   C:\Users\santi\Desktop\discord-bot
+
+2. Install dependencies:
+
+   npm install
+
+   The project also includes pnpm files, so pnpm can be used if preferred:
+
+   pnpm install
+
+3. Create a .env file from .env.example:
+
+   copy .env.example .env
+
+4. Edit .env and set real credentials.
+
+5. Deploy slash commands:
+
+   npm run deploy-commands
+
+6. Start the bot:
+
+   npm start
+
+7. For development with auto-restart:
+
+   npm run dev
+
+
+NPM Scripts
+-----------
+npm start
+  Runs node index.js.
+
+npm run dev
+  Runs node --watch index.js.
+
+npm run deploy-commands
+  Loads every command under src/bot/commands and registers slash commands with
+  Discord. If DISCORD_GUILD_ID is set, commands deploy to that guild instantly.
+  Commands are also deployed globally, which can take up to about 1 hour.
+
+
+Environment Variables
+---------------------
+Required:
+
+DISCORD_TOKEN
+  Discord bot token used to log in.
+
+DISCORD_CLIENT_ID
+  Discord application client ID used for slash command deployment.
+
+OWNER_IDS
+  Comma-separated Discord user IDs that count as bot owners.
+
+Optional / feature-specific:
+
+DISCORD_GUILD_ID
+  Optional guild/server ID for instant test command deployment.
+
+API_PORT
+  Express API port. Defaults to 3001.
+
+PREMIUM_USER_IDS
+  Optional comma-separated premium user IDs.
+
+GEMINI_API_KEY
+  Used by AI/Gemini-related features if present.
+
+HF_API_TOKEN
+  Used by Hugging Face-related features if present.
+
+OPENWEATHER_API_KEY
+  Used by /weather.
+
+GENIUS_API_KEY
+  Used by lyrics commands.
+
+EXCHANGE_API_KEY
+  Used by exchange-rate commands.
+
+LASTFM_API_KEY
+  Used by Last.fm commands.
+
+CAT_API_KEY
+  Optional key for cat image commands.
+
+
+Project Structure
+-----------------
+index.js
+  Main entry point. Loads .env, initializes the database, creates the Discord
+  client, starts the Express API server, logs in to Discord, and checks timer
+  reminders every 10 seconds.
+
+deploy-commands.js
+  Recursively loads slash commands from src/bot/commands and deploys them to
+  Discord through the REST API.
+
+src/bot/client.js
+  Creates the Discord.js client with intents, partials, command loading, and
+  event loading.
+
+src/bot/events/ready.js
+  Logs startup information and rotates bot presence every 30 seconds.
+
+src/bot/events/interactionCreate.js
+  Handles slash commands, command usage tracking, command errors, button
+  interactions, and autocomplete.
+
+src/bot/commands/
+  Slash command files grouped by category.
+
+src/api/server.js
+  Express API server with /health, /stats, /scrape, and /api/scrape routes.
+
+src/database/db.js
+  sql.js database setup and helper functions.
+
+src/database/schema.sql
+  Database table definitions.
+
+src/services/
+  API/service wrappers for external data sources.
+
+src/utils/
+  Shared helpers for embeds, constants, pagination, and premium checks.
+
+src/data/
+  Local JSON data used by game/Roblox-related commands.
+
+bin/yt-dlp.exe
+  Local yt-dlp binary used by scraping/media extraction features.
+
+bot.db
+  Local SQLite database file. This stores runtime data.
+
+
+Discord Client
+--------------
+The client is created in src/bot/client.js.
+
+Enabled intents:
+- Guilds
+- GuildMessages
+- GuildMembers
+- GuildPresences
+- MessageContent
+- DirectMessages
+
+Enabled partials:
+- Channel
+- Message
+
+Commands are loaded recursively from:
+
+src/bot/commands
+
+Each command file should export:
+- data: SlashCommandBuilder or compatible command data
+- execute(interaction): async function that runs the command
+
+Optional:
+- autocomplete(interaction): async function for autocomplete options
+
+
+Command Categories
+------------------
+Admin:
+- timer
+
+Finance:
+- crypto
+- exchange
+
+Fun:
+- 8ball
+- cat
+- games-fun
+
+Games:
+- epicgames
+
+Roblox:
+- exploit
+- roblox-render
+- roblox-server
+- roblox
+
+Social:
+- applemusic
+- lastfm
+- lyrics
+- tiktok
+
+Last.fm subcommands:
+- set, np, remove, profile, recent, plays, overview
+- topartists, topalbums, toptracks, chart, receipt
+- artist, album, track, artistplays, albumplays, trackplays
+- albumtracks, cover, loved
+- whoknows, whoknowsalbum, whoknowstrack
+
+.fmbot-compatible dot commands and aliases:
+- .fm / .np, .login, .profile / .stats / .lfm, .remove
+- .recent / .r, .plays / .p, .overview / .o
+- .topartists / .ta / .artists, .topalbums / .tab, .toptracks / .tt
+- .chart / .c, .receipt / .rcpt
+- .artist / .a, .album / .ab, .track / .tr / .trackdetails / .td
+- .artistplays / .ap, .albumplays / .abp, .trackplays / .tp
+- .albumtracks / .abt, .cover / .co, .loved / .lt
+- .whoknows / .wk / .w, .whoknowsalbum / .wkab / .wa
+- .whoknowstrack / .wktr / .wt
+
+Multi-word artist, album, and track searches do not need quotes. Use
+"artist | album" or "artist | track" when you want an exact split.
+
+The who-knows commands compare only server members who linked a Last.fm
+account to this bot. They do not use .fmbot's private/global user database.
+
+Utility:
+- about
+- compress
+- convert
+- help
+- imgtotext
+- ip
+- lookup
+- paste
+- ping
+- profile
+- scrape
+- screenshot
+- shorten
+- togif
+- weather
+
+
+Database
+--------
+The database uses sql.js, a pure JavaScript SQLite implementation.
+
+Database file:
+
+bot.db
+
+Schema file:
+
+src/database/schema.sql
+
+Tables:
+
+premium_users
+  Stores premium access by user ID, tier, activation time, and optional expiry.
+
+user_profiles
+  Stores XP, level, command count, and daily timestamps.
+
+crypto_tracks
+  Stores tracked crypto transactions.
+
+timers
+  Stores timer/reminder data. index.js checks due reminders every 10 seconds.
+
+command_logs
+  Stores command usage analytics.
+
+game_states
+  Stores serialized persistent game state.
+
+lastfm_users
+  Stores linked Discord user ID to Last.fm username mappings.
+
+Database helpers in src/database/db.js:
+- initDatabase()
+- getDatabase()
+- saveDatabase()
+- dbAll(sql, params)
+- dbGet(sql, params)
+- dbRun(sql, params)
+- getOrCreateProfile(userId)
+- incrementCommandUsage(userId, commandName, guildId)
+
+The database auto-saves every 30 seconds and also saves on dbRun().
+
+
+API Server
+----------
+The API server is created in src/api/server.js and started from index.js.
+
+Default port:
+
+3001
+
+Change with:
+
+API_PORT=your_port
+
+Routes:
+
+GET /health
+  Returns bot/API status, uptime, bot tag, guild count, command count, and a
+  timestamp.
+
+GET /stats
+  Returns guild count, estimated user count, command count, total commands run,
+  total tracked users, premium user count, and uptime.
+
+POST /scrape
+  Body: { "url": "https://example.com/video" }
+  Uses bin/yt-dlp.exe to extract media metadata and a direct media link.
+
+GET /api/scrape?url=...
+  Backward-compatible scraper endpoint.
+
+Rate limit:
+  60 requests per minute per client.
+
+
+Command Flow
+------------
+1. Discord sends an interaction.
+2. src/bot/events/interactionCreate.js receives it.
+3. The command is found in client.commands by interaction.commandName.
+4. Command usage is logged with incrementCommandUsage().
+5. The command execute() function runs.
+6. Errors are caught and sent back as an error embed.
+
+
+Premium / Owner Access
+----------------------
+Premium helpers live in:
+
+src/utils/premium.js
+
+Owner IDs come from OWNER_IDS.
+Premium IDs can come from PREMIUM_USER_IDS or the premium_users database table.
+Owners always count as premium.
+
+Current interactionCreate.js comment says premium requirement checks were
+removed, so commands may not currently enforce premium access globally.
+Individual commands may still check ownership or premium manually.
+
+
+Adding a New Command
+--------------------
+1. Create a new .js file inside an existing category under:
+
+   src/bot/commands
+
+2. Export command data and execute().
+
+Example structure:
+
+const { SlashCommandBuilder } = require('discord.js');
+
+module.exports = {
+  data: new SlashCommandBuilder()
+    .setName('example')
+    .setDescription('Example command'),
+
+  async execute(interaction) {
+    await interaction.reply('Hello!');
+  },
+};
+
+3. Deploy slash commands:
+
+   npm run deploy-commands
+
+4. Restart the bot:
+
+   npm start
+
+
+Adding a New Service
+--------------------
+1. Add a file under src/services, for example:
+
+   src/services/exampleService.js
+
+2. Keep API-specific code in that service file.
+3. Import the service from the command that needs it.
+4. Store API keys in .env, never directly in source.
+
+
+Local Development Checklist
+---------------------------
+Before running:
+- Make sure .env exists.
+- Make sure DISCORD_TOKEN and DISCORD_CLIENT_ID are set.
+- Make sure bot intents are enabled in the Discord Developer Portal if needed.
+- Run npm install if node_modules is missing.
+- Run npm run deploy-commands after adding or renaming commands.
+
+Useful commands:
+
+npm run dev
+npm run deploy-commands
+npm start
+
+Useful API checks:
+
+http://localhost:3001/health
+http://localhost:3001/stats
+
+
+Common Issues
+-------------
+Bot does not start:
+- Check DISCORD_TOKEN.
+- Check Node.js is installed.
+- Run npm install.
+
+Slash commands do not appear:
+- Run npm run deploy-commands.
+- If global commands were used, wait for propagation.
+- Set DISCORD_GUILD_ID for instant testing in one server.
+
+Database changes are not saved:
+- Make sure the process has permission to write bot.db.
+- Check console for [DB] Save error messages.
+
+Scrape command/API fails:
+- Confirm bin/yt-dlp.exe exists.
+- Check whether the target site blocks scraping.
+- Check API rate limits and URL validity.
+
+Image/OCR features fail:
+- Confirm eng.traineddata exists.
+- Confirm sharp/tesseract dependencies are installed correctly.
+
+Weather/lyrics/Last.fm commands fail:
+- Check the related API key in .env.
+
+
+Deployment Notes
+----------------
+This bot is a long-running Node.js process. Host it somewhere that supports
+always-on Node processes, such as:
+- VPS
+- Windows server
+- Linux server
+- Railway/Fly/Render-style service, if compatible with local SQLite and files
+
+Important deployment files:
+- .env
+- bot.db
+- bin/yt-dlp.exe, if scraper features are needed
+- eng.traineddata, if OCR features are needed
+
+For production, consider:
+- Keeping bot.db backed up.
+- Not committing .env or bot.db to public repos.
+- Rotating leaked keys.
+- Running the process with a manager such as pm2 or a system service.
+
+
+Maintenance Notes
+-----------------
+After changing command names, descriptions, or options:
+
+npm run deploy-commands
+
+After changing only command execution logic:
+
+Restart the bot.
+
+After changing schema.sql:
+- Back up bot.db first.
+- Restart the bot so initDatabase() runs schema updates.
+
+After changing API routes:
+- Restart the bot/API process.
+
+
+File Ownership Notes
+--------------------
+Do not delete these unless you know the effect:
+- bot.db: runtime database
+- eng.traineddata: OCR data
+- bin/yt-dlp.exe: media scraping binary
+- src/data/*.json: local command datasets
+
+
+Last Updated
+------------
+Generated by Codex on 2026-06-23.
