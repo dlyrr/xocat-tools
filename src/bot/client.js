@@ -51,10 +51,14 @@ function loadCommands(client, dir) {
       loaded += loadCommands(client, fullPath);
     } else if (entry.name.endsWith('.js')) {
       try {
-        const command = require(fullPath);
-        if (command.data && command.execute) {
-          client.commands.set(command.data.name, command);
-          loaded += 1;
+        // A module may export one command or an array of them (see
+        // commands/images/effects.js).
+        const exported = require(fullPath);
+        for (const command of Array.isArray(exported) ? exported : [exported]) {
+          if (command?.data && command?.execute) {
+            client.commands.set(command.data.name, command);
+            loaded += 1;
+          }
         }
       } catch (err) {
         logger.error('commands', `Failed to load ${entry.name}`, err);

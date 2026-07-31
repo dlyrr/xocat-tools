@@ -16,7 +16,7 @@ const CATEGORY_INFO = {
   games: 'Store giveaways and game information',
   fun: 'Interactive games and random commands',
   roblox: 'Roblox account and game utilities',
-  social: 'Media and Last.fm commands',
+  social: 'Music and social media lookups',
   finance: 'Crypto and currency conversion',
   admin: 'Timers and scheduled work',
 };
@@ -53,13 +53,16 @@ function loadCategory(category) {
   for (const file of fs.readdirSync(categoryPath)) {
     if (!file.endsWith('.js')) continue;
     try {
-      const command = require(path.join(categoryPath, file));
-      if (!command?.data?.name) continue;
-      commands.push({
-        name: command.data.name,
-        description: command.data.description || '',
-        aliases: command.prefixAliases || [],
-      });
+      const exported = require(path.join(categoryPath, file));
+      for (const command of Array.isArray(exported) ? exported : [exported]) {
+        if (!command?.data?.name) continue;
+        commands.push({
+          name: command.data.name,
+          description: command.data.description || '',
+          // Prepend aliases are objects; show just the typed name.
+          aliases: (command.prefixAliases || []).map(alias => (typeof alias === 'string' ? alias : alias.alias)),
+        });
+      }
     } catch (error) {
       console.error(`[HELP] Could not load ${category}/${file}:`, error.message);
     }

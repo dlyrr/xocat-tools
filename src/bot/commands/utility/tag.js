@@ -57,9 +57,7 @@ module.exports = {
     .addSubcommand(sub => quietOption(sub.setName('list').setDescription('List every tag in this server')))
     .addSubcommand(sub => quietOption(sub.setName('random').setDescription('Show a random tag'))),
 
-  // `ta` is deliberately omitted: the Last.fm alias table already claims it
-  // for topartists, and that table is consulted first.
-  prefixAliases: ['t', 'tags'],
+  prefixAliases: ['t', 'tags', 'ta'],
 
   async execute(interaction) {
     const subcommand = interaction.options.getSubcommand();

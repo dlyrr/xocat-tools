@@ -22,8 +22,11 @@ function loadCommands(dir) {
       loadCommands(fullPath);
     } else if (entry.name.endsWith('.js')) {
       try {
-        const command = require(fullPath);
-        if (command.data) {
+        // A module may export one command or an array of them (see
+        // commands/images/effects.js).
+        const exported = require(fullPath);
+        for (const command of Array.isArray(exported) ? exported : [exported]) {
+          if (!command?.data) continue;
           const data = command.data.toJSON();
           globalCommands.push({
             ...data,
@@ -42,11 +45,35 @@ function loadCommands(dir) {
   }
 }
 
+// Discord rejects the entire deployment if an app exceeds this, so check it here
+// rather than letting the API fail with everything unregistered.
+const MAX_GLOBAL_COMMANDS = 100;
+
 async function deploy() {
   const commandsPath = path.join(__dirname, 'src', 'bot', 'commands');
   loadCommands(commandsPath);
 
-  console.log(`Deploying ${globalCommands.length} commands...`);
+  const duplicates = globalCommands
+    .map(command => command.name)
+    .filter((name, index, all) => all.indexOf(name) !== index);
+  if (duplicates.length) {
+    console.error(`Duplicate command names: ${[...new Set(duplicates)].join(', ')}`);
+    console.error('Discord would reject the deployment. Rename or remove one of each pair.');
+    process.exitCode = 1;
+    return;
+  }
+
+  if (globalCommands.length > MAX_GLOBAL_COMMANDS) {
+    console.error(`${globalCommands.length} commands exceeds Discord's limit of ${MAX_GLOBAL_COMMANDS}.`);
+    console.error('Nothing was deployed — Discord rejects the whole batch, which would leave you with none.');
+    console.error(`Remove ${globalCommands.length - MAX_GLOBAL_COMMANDS} command(s). The quickest lever is the`);
+    console.error('PROMOTED list in src/bot/commands/images/effects.js: anything taken out of it stays');
+    console.error('usable through /image and as a prefix command.');
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log(`Deploying ${globalCommands.length} commands (${MAX_GLOBAL_COMMANDS - globalCommands.length} slots spare)...`);
 
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 

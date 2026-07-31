@@ -38,6 +38,8 @@ module.exports = {
       .addChoices(
         { name: 'Bar — tall white bar, large centred text', value: 'caption' },
         { name: 'iFunny — small bar, left-aligned text', value: 'caption2' },
+        { name: 'Whisper — large outlined text over the middle', value: 'whisper' },
+        { name: 'Snapchat — translucent bar across the image', value: 'snapchat' },
       ))
     .addStringOption(o => o
       .setName('position')
@@ -62,9 +64,13 @@ module.exports = {
     // The iFunny variant defaults to the bottom; the tall bar defaults to the top.
     const position = interaction.options.getString('position') || (style === 'caption2' ? 'bottom' : 'top');
 
+    // whisper and snapchat overlay text rather than adding a bar, so the
+    // style/position params do not apply to them.
+    const overlay = style === 'whisper' || style === 'snapchat';
+
     return runEffect(interaction, style, {
       title: 'Caption',
-      params: { style, position },
+      params: overlay ? {} : { style, position },
     });
   },
 };

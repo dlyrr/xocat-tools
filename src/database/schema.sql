@@ -61,11 +61,9 @@ CREATE TABLE IF NOT EXISTS game_states (
     updated_at INTEGER NOT NULL
 );
 
--- Last.fm Integration
-CREATE TABLE IF NOT EXISTS lastfm_users (
-    user_id TEXT PRIMARY KEY,
-    lastfm_username TEXT NOT NULL
-);
+-- The lastfm_users table was dropped along with the Last.fm commands. It is no
+-- longer declared here; an existing bot.db keeps the orphaned table (and its
+-- rows) harmlessly until the file is recreated.
 
 -- Persistent button polls
 CREATE TABLE IF NOT EXISTS polls (

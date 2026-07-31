@@ -3,98 +3,6 @@ const { incrementCommandUsage } = require('../database/db');
 const { listEffects } = require('./imageEffects');
 
 const PREFIX = '.';
-const LASTFM_SUBCOMMANDS = new Set([
-  'set', 'np', 'remove', 'profile', 'recent', 'plays', 'overview', 'topartists',
-  'topalbums', 'toptracks', 'chart', 'receipt', 'artist', 'album', 'track',
-  'artistplays', 'albumplays', 'trackplays', 'albumtracks', 'cover', 'loved',
-  'whoknows', 'whoknowsalbum', 'whoknowstrack',
-]);
-
-// .fmbot-compatible names for the Last.fm features this bot actually supports.
-// Commands that require .fmbot's private global library are intentionally omitted.
-const LASTFM_PREFIX_ALIASES = new Map(Object.entries({
-  fm: 'np',
-  np: 'np',
-  login: 'set',
-  profile: 'profile',
-  stats: 'profile',
-  lfm: 'profile',
-  remove: 'remove',
-  recent: 'recent',
-  r: 'recent',
-  plays: 'plays',
-  p: 'plays',
-  overview: 'overview',
-  o: 'overview',
-  topartists: 'topartists',
-  ta: 'topartists',
-  artists: 'topartists',
-  topalbums: 'topalbums',
-  tab: 'topalbums',
-  toptracks: 'toptracks',
-  tt: 'toptracks',
-  chart: 'chart',
-  c: 'chart',
-  receipt: 'receipt',
-  rcpt: 'receipt',
-  artist: 'artist',
-  a: 'artist',
-  album: 'album',
-  ab: 'album',
-  track: 'track',
-  tr: 'track',
-  trackdetails: 'track',
-  td: 'track',
-  artistplays: 'artistplays',
-  ap: 'artistplays',
-  albumplays: 'albumplays',
-  abp: 'albumplays',
-  trackplays: 'trackplays',
-  tp: 'trackplays',
-  albumtracks: 'albumtracks',
-  abt: 'albumtracks',
-  cover: 'cover',
-  co: 'cover',
-  loved: 'loved',
-  lt: 'loved',
-  whoknows: 'whoknows',
-  wk: 'whoknows',
-  w: 'whoknows',
-  whoknowsalbum: 'whoknowsalbum',
-  wkab: 'whoknowsalbum',
-  wka: 'whoknowsalbum',
-  wa: 'whoknowsalbum',
-  whoknowstrack: 'whoknowstrack',
-  wktr: 'whoknowstrack',
-  wt: 'whoknowstrack',
-}));
-
-const LASTFM_PERIOD_ALIASES = new Map(Object.entries({
-  weekly: '7day',
-  week: '7day',
-  w: '7day',
-  monthly: '1month',
-  month: '1month',
-  m: '1month',
-  quarterly: '3month',
-  quarter: '3month',
-  q: '3month',
-  half: '6month',
-  'half-year': '6month',
-  h: '6month',
-  yearly: '12month',
-  year: '12month',
-  y: '12month',
-  alltime: 'overall',
-  'all-time': 'overall',
-  all: 'overall',
-  a: 'overall',
-  overall: 'overall',
-}));
-
-const LASTFM_PRESENTATION_TOKENS = new Set([
-  'embed', 'image', 'img', 'pagination', 'pages', 'page', 'billboard', 'bb',
-]);
 
 function tokenize(input) {
   const tokens = [];
@@ -124,133 +32,12 @@ function tokenize(input) {
   return tokens;
 }
 
-function optionToken(name, value) {
-  return `${name}:${value}`;
-}
-
-function isUserToken(value) {
-  return /^<@!?\d+>$/.test(String(value || '')) || /^\d{15,22}$/.test(String(value || ''));
-}
-
-function normalizeLastFmTokens(subcommand, inputTokens) {
-  const tokens = [...inputTokens];
-  const output = [subcommand];
-
-  const takeMatching = predicate => {
-    const index = tokens.findIndex(predicate);
-    if (index === -1) return null;
-    return tokens.splice(index, 1)[0];
-  };
-  const takeUser = () => {
-    const value = takeMatching(isUserToken);
-    if (value) output.push(optionToken('user', value));
-  };
-  const takeQuiet = () => {
-    const value = takeMatching(token => String(token).toLowerCase() === '--quiet');
-    if (value) output.push(optionToken('quiet', 'true'));
-  };
-  const takePeriod = () => {
-    const value = takeMatching(token => LASTFM_PERIOD_ALIASES.has(String(token).toLowerCase()));
-    if (value) output.push(optionToken('period', LASTFM_PERIOD_ALIASES.get(String(value).toLowerCase())));
-  };
-  const takeInteger = (name, min, max) => {
-    const value = takeMatching(token => /^\d+$/.test(String(token)) && Number(token) >= min && Number(token) <= max);
-    if (value) output.push(optionToken(name, value));
-  };
-  const removePresentationTokens = () => {
-    for (let index = tokens.length - 1; index >= 0; index -= 1) {
-      if (LASTFM_PRESENTATION_TOKENS.has(String(tokens[index]).toLowerCase())) tokens.splice(index, 1);
-    }
-  };
-  const takeText = name => {
-    const value = tokens.join(' ').trim();
-    tokens.length = 0;
-    if (value) output.push(optionToken(name, value));
-  };
-  const takeEntityPair = entityName => {
-    const query = tokens.join(' ').trim();
-    tokens.length = 0;
-    if (!query) return;
-    const separator = query.indexOf('|');
-    if (separator === -1) {
-      // A single natural-language query is resolved through Last.fm search.
-      output.push(optionToken(entityName, query));
-      return;
-    }
-    const artist = query.slice(0, separator).trim();
-    const entity = query.slice(separator + 1).trim();
-    if (artist) output.push(optionToken('artist', artist));
-    if (entity) output.push(optionToken(entityName, entity));
-  };
-
-  takeQuiet();
-  if ([
-    'topartists', 'topalbums', 'toptracks', 'chart', 'receipt',
-    'whoknows', 'whoknowsalbum', 'whoknowstrack',
-  ].includes(subcommand)) removePresentationTokens();
-
-  if (subcommand === 'set') {
-    takeText('username');
-  } else if (['np', 'profile'].includes(subcommand)) {
-    takeUser();
-    tokens.length = 0; // .fm allows trailing text just like .fmbot.
-  } else if (subcommand === 'remove') {
-    tokens.length = 0;
-  } else if (subcommand === 'recent') {
-    takeUser();
-    takeInteger('limit', 1, 25);
-    takeText('artist');
-  } else if (subcommand === 'plays') {
-    takeUser();
-    takePeriod();
-    if (tokens.length) output.push(optionToken('period', tokens.join(' ')));
-  } else if (subcommand === 'overview') {
-    takeUser();
-    takeInteger('days', 1, 8);
-    if (tokens.length) output.push(optionToken('days', tokens.join(' ')));
-  } else if (['topartists', 'topalbums', 'toptracks'].includes(subcommand)) {
-    takeUser();
-    takePeriod();
-    takeInteger('limit', 1, 25);
-    if (tokens.length) output.push(optionToken('period', tokens.join(' ')));
-  } else if (subcommand === 'chart') {
-    takeUser();
-    const size = takeMatching(token => /^[3-6]x[3-6]$/i.test(String(token)));
-    if (size) output.push(optionToken('size', String(size).toLowerCase()));
-    takePeriod();
-    if (tokens.length) output.push(optionToken('period', tokens.join(' ')));
-  } else if (subcommand === 'receipt') {
-    takeUser();
-    takePeriod();
-    if (tokens.length) output.push(optionToken('period', tokens.join(' ')));
-  } else if (['artist', 'artistplays'].includes(subcommand)) {
-    takeUser();
-    takeText('artist');
-  } else if (subcommand === 'whoknows') {
-    takeText('artist');
-  } else if (['album', 'albumplays', 'albumtracks', 'cover'].includes(subcommand)) {
-    takeUser();
-    takeEntityPair('album');
-  } else if (subcommand === 'whoknowsalbum') {
-    takeEntityPair('album');
-  } else if (['track', 'trackplays'].includes(subcommand)) {
-    takeUser();
-    takeEntityPair('track');
-  } else if (subcommand === 'whoknowstrack') {
-    takeEntityPair('track');
-  } else if (subcommand === 'loved') {
-    takeUser();
-    takeInteger('limit', 1, 25);
-  }
-
-  return output;
-}
-
 /**
  * Build the prefix alias table for a client.
  *
  * Two sources feed it, in priority order:
- *   1. `prefixAliases` exported by a command module
+ *   1. `prefixAliases` exported by a command module, optionally with leading
+ *      tokens to prepend (`.haah` -> `/mirror direction:haah`)
  *   2. every image effect name/alias, routed to `/image` with the effect
  *      pre-filled — this is what makes `.deepfry`, `.magik`, `.spin` and the
  *      rest work the way they do in esmBot
@@ -264,9 +51,14 @@ function buildAliasRegistry(client) {
     const target = command.data?.name;
     if (!target) continue;
     for (const alias of command.prefixAliases || []) {
-      const key = String(alias).toLowerCase();
+      // An alias is either a bare name or { alias, prepend }, where prepend
+      // supplies leading tokens — that is how `.haah` reaches /mirror with the
+      // direction already chosen.
+      const name = typeof alias === 'string' ? alias : alias.alias;
+      const prepend = typeof alias === 'string' ? undefined : alias.prepend;
+      const key = String(name).toLowerCase();
       if (client.commands.has(key) || registry.has(key)) continue;
-      registry.set(key, { name: target });
+      registry.set(key, { name: target, prepend });
     }
   }
 
@@ -289,18 +81,6 @@ function getAliasRegistry(client) {
 }
 
 function applyAliases(name, tokens, registry = null) {
-  if (name === 'lastfm') {
-    const requested = String(tokens[0] || '').toLowerCase();
-    const subcommand = LASTFM_SUBCOMMANDS.has(requested)
-      ? requested
-      : LASTFM_PREFIX_ALIASES.get(requested);
-    if (subcommand) return { name: 'lastfm', tokens: normalizeLastFmTokens(subcommand, tokens.slice(1)) };
-    return { name: 'lastfm', tokens: normalizeLastFmTokens('profile', tokens) };
-  }
-
-  const subcommand = LASTFM_PREFIX_ALIASES.get(name);
-  if (subcommand) return { name: 'lastfm', tokens: normalizeLastFmTokens(subcommand, tokens) };
-
   const mapped = registry?.get(name);
   if (mapped) return { name: mapped.name, tokens: [...(mapped.prepend || []), ...tokens] };
 
@@ -560,14 +340,12 @@ async function handlePrefixCommand(message) {
 }
 
 module.exports = {
-  LASTFM_PREFIX_ALIASES,
   PREFIX,
   PrefixInteraction,
   applyAliases,
   buildAliasRegistry,
   getAliasRegistry,
   handlePrefixCommand,
-  normalizeLastFmTokens,
   parseOptions,
   resolveAttachment,
   selectSchema,

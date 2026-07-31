@@ -25,8 +25,10 @@ function loadCommands() {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) walk(full);
       else if (entry.name.endsWith('.js')) {
-        const command = require(full);
-        if (command?.data && command?.execute) commands.set(command.data.name, command);
+        const exported = require(full);
+        for (const command of Array.isArray(exported) ? exported : [exported]) {
+          if (command?.data && command?.execute) commands.set(command.data.name, command);
+        }
       }
     }
   })(path.join(__dirname, '..', 'src', 'bot', 'commands'));
@@ -72,23 +74,59 @@ async function main() {
   const client = { commands };
   const registry = buildAliasRegistry(client);
 
-  check('registry maps .deepfry to /image', registry.get('deepfry')?.name === 'image', JSON.stringify(registry.get('deepfry')));
-  check('registry pre-fills the effect name', registry.get('fry')?.prepend?.[0] === 'deepfry', JSON.stringify(registry.get('fry')));
-  check('registry maps .magik to /image', registry.get('magik')?.name === 'image');
+  check('promoted effects are real commands', commands.has('deepfry') && commands.has('magik') && commands.has('wide'));
+  check('.fry aliases the promoted /deepfry', registry.get('fry')?.name === 'deepfry', JSON.stringify(registry.get('fry')));
+  check('unpromoted effects still route to /image', registry.get('sharpen')?.name === 'image' && registry.get('sharpen')?.prepend?.[0] === 'sharpen', JSON.stringify(registry.get('sharpen')));
+  check('prepend aliases reach the grouped command', registry.get('haah')?.name === 'mirror' && registry.get('haah')?.prepend?.[0] === 'haah', JSON.stringify(registry.get('haah')));
   check('real commands are not shadowed by effect aliases', !registry.has('caption') && !registry.has('watermark'));
+  check('Last.fm aliases are gone', !registry.has('fm') && !registry.has('np') && !registry.has('wk'));
   check('explicit prefixAliases register', registry.get('birb')?.name === 'bird', JSON.stringify(registry.get('birb')));
   check('tag aliases register', registry.get('t')?.name === 'tag');
 
-  // .deepfry with no arguments
+  // .deepfry now hits its own command
   {
-    const { alias, values } = await resolve(client, '.deepfry');
-    check('.deepfry routes to image with effect=deepfry', alias.name === 'image' && values.get('effect') === 'deepfry', values?.get('effect'));
+    const { alias } = await resolve(client, '.deepfry');
+    check('.deepfry runs /deepfry directly', alias.name === 'deepfry', alias.name);
   }
 
   // .fry alias
   {
-    const { values } = await resolve(client, '.fry');
-    check('.fry resolves to the deepfry effect', values.get('effect') === 'deepfry');
+    const { alias } = await resolve(client, '.fry');
+    check('.fry runs /deepfry', alias.name === 'deepfry', alias.name);
+  }
+
+  // A bare number must land in amount, not in link
+  {
+    const { alias, values } = await resolve(client, '.hue 90');
+    check('.hue 90 puts 90 in amount', alias.name === 'hue' && values.get('amount') === 90 && !values.get('link'), `${alias.name} amount=${values.get('amount')} link=${values.get('link')}`);
+  }
+  {
+    const { alias, values } = await resolve(client, '.wide 4');
+    check('.wide 4 puts 4 in amount', alias.name === 'wide' && values.get('amount') === 4, `${alias.name} ${values.get('amount')}`);
+  }
+
+  // Grouped commands
+  {
+    const { alias, values } = await resolve(client, '.haah');
+    check('.haah reaches /mirror with direction=haah', alias.name === 'mirror' && values.get('direction') === 'haah', `${alias.name} ${values.get('direction')}`);
+  }
+  {
+    const { alias, values } = await resolve(client, '.hooh');
+    check('.hooh reaches /mirror with direction=hooh', alias.name === 'mirror' && values.get('direction') === 'hooh', values.get('direction'));
+  }
+  {
+    const { alias, values } = await resolve(client, '.speed 2');
+    check('.speed 2 reaches /gifspeed mode=speed amount=2', alias.name === 'gifspeed' && values.get('mode') === 'speed' && values.get('amount') === 2, `${alias.name} ${values.get('mode')} ${values.get('amount')}`);
+  }
+  {
+    const { alias, values } = await resolve(client, '.reverse');
+    check('.reverse reaches /gifspeed mode=reverse', alias.name === 'gifspeed' && values.get('mode') === 'reverse', values.get('mode'));
+  }
+
+  // Effects left behind still work through /image
+  {
+    const { alias, values } = await resolve(client, '.tile');
+    check('.tile still works via /image', alias.name === 'image' && values.get('effect') === 'tile', `${alias.name} ${values.get('effect')}`);
   }
 
   // Greedy text: multi-word captions without quotes
@@ -134,10 +172,10 @@ async function main() {
     check('.tag get routes to the subcommand', selected.subcommand === 'get' && values.get('name') === 'hello', `${selected.subcommand} / ${values.get('name')}`);
   }
 
-  // Last.fm aliasing must keep working
+  // The Last.fm commands were removed, so .fm must resolve to nothing
   {
-    const { alias } = await resolve(client, '.fm');
-    check('.fm still routes to lastfm np', alias.name === 'lastfm' && alias.tokens[0] === 'np', JSON.stringify(alias.tokens));
+    const { command } = await resolve(client, '.fm');
+    check('.fm no longer resolves to a command', command === null);
   }
 
   console.log(`\n${failures} failure(s).`);

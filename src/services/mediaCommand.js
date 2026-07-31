@@ -82,6 +82,17 @@ async function runEffect(interaction, effectName, options = {}) {
 
   const params = { ...readParams(interaction), ...(options.params || {}) };
 
+  // `.hue 90` through /image puts "90" in text, because text is the greedy
+  // option there. Effects with no text parameter but a numeric one clearly meant
+  // the number, so move it across rather than silently ignoring it.
+  if (params.text != null && params.amount == null && !effect.params?.text && effect.params?.amount) {
+    const numeric = Number(String(params.text).trim());
+    if (Number.isFinite(numeric)) {
+      params.amount = numeric;
+      params.text = null;
+    }
+  }
+
   // Validate required text up front so we do not download a file for nothing.
   if (effect.params?.text?.required && !String(params.text ?? '').trim()) {
     return interaction.editReply(`❌ \`${effect.name}\` needs some text. Pass it with the \`text\` option.`);

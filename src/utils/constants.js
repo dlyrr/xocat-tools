@@ -23,7 +23,6 @@ module.exports = {
     finance: 0x14B8A6,    // Teal for finance
     admin: 0x94A3B8,      // Slate for admin
     utility: 0x60A5FA,    // Blue for utility
-    lastfm: 0xD51007,     // Last.fm red
   },
 
   // Emojis
@@ -55,7 +54,6 @@ module.exports = {
     info: 'ℹ️',
     heart: '❤️',
     cookie: '🍪',
-    lastfm: '🎵',
   },
 
   // Roblox API base URLs

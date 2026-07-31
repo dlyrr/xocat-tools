@@ -23,7 +23,7 @@ Keep .env.example limited to placeholders. If a live key is ever shared,
 committed, or uploaded, rotate it in the provider dashboard immediately.
 
 Never paste DISCORD_TOKEN, GEMINI_API_KEY, HF_API_TOKEN, weather keys, Genius
-keys, Last.fm keys, or Cat API keys into public documentation.
+keys, or Cat API keys into public documentation.
 
 
 Quick Start
@@ -128,9 +128,6 @@ GENIUS_API_KEY
 
 EXCHANGE_API_KEY
   Used by exchange-rate commands.
-
-LASTFM_API_KEY
-  Used by Last.fm commands.
 
 CAT_API_KEY
   Optional key for cat image commands.
@@ -237,7 +234,9 @@ Commands are loaded recursively from:
 
 src/bot/commands
 
-Each command file should export:
+Each command file should export either one command object or an ARRAY of them
+(src/bot/commands/images/effects.js exports an array, one entry per promoted
+image effect). A command object has:
 - data: SlashCommandBuilder or compatible command data
 - execute(interaction): async function that runs the command
 
@@ -245,7 +244,9 @@ Optional:
 - autocomplete(interaction): async function for autocomplete options
 - guildOnly: true to refuse the command outside a server
 - skipUsageTracking: true to keep the command out of command_logs
-- prefixAliases: extra dot-prefix names for the command, e.g. ['pfp', 'icon']
+- prefixAliases: extra dot-prefix names for the command, e.g. ['pfp', 'icon'].
+  An entry may also be { alias, prepend } to supply leading arguments, which is
+  how `.haah` reaches `/mirror direction:haah`
 - prefixGreedy: the name of a string option that should soak up the rest of a
   dot-prefix line, so multi-word input does not need quotes
 
@@ -271,11 +272,16 @@ Games:
 - epicgames
 
 Images:
-- image      (the effect engine — around 50 effects, see "Image Effects")
+- image      (browse/run any of the 49 effects, see "Image Effects")
 - meme
 - motivate
 - speechbubble
 - watermark
+- mirror     (haah, waaw, woow, hooh)
+- gifspeed   (speed, slow, reverse, freeze, unfreeze)
+- and 19 promoted effects with their own command: deepfry, jpeg, blur,
+  pixelate, invert, grayscale, hue, flip, flop, wide, stretch, squish,
+  magik, spin, globe, explode, implode, swirl, bounce
 
 Roblox:
 - exploit
@@ -285,33 +291,8 @@ Roblox:
 
 Social:
 - applemusic
-- lastfm
 - lyrics
 - tiktok
-
-Last.fm subcommands:
-- set, np, remove, profile, recent, plays, overview
-- topartists, topalbums, toptracks, chart, receipt
-- artist, album, track, artistplays, albumplays, trackplays
-- albumtracks, cover, loved
-- whoknows, whoknowsalbum, whoknowstrack
-
-.fmbot-compatible dot commands and aliases:
-- .fm / .np, .login, .profile / .stats / .lfm, .remove
-- .recent / .r, .plays / .p, .overview / .o
-- .topartists / .ta / .artists, .topalbums / .tab, .toptracks / .tt
-- .chart / .c, .receipt / .rcpt
-- .artist / .a, .album / .ab, .track / .tr / .trackdetails / .td
-- .artistplays / .ap, .albumplays / .abp, .trackplays / .tp
-- .albumtracks / .abt, .cover / .co, .loved / .lt
-- .whoknows / .wk / .w, .whoknowsalbum / .wkab / .wa
-- .whoknowstrack / .wktr / .wt
-
-Multi-word artist, album, and track searches do not need quotes. Use
-"artist | album" or "artist | track" when you want an exact split.
-
-The who-knows commands compare only server members who linked a Last.fm
-account to this bot. They do not use .fmbot's private/global user database.
 
 Utility:
 - about
@@ -356,19 +337,44 @@ images and animations alike. A still input becomes a 15 or 30 frame animation
 for the effects that are inherently animated (spin, squish, globe, bounce,
 fade, slide).
 
-Running an effect:
+How to run one
+--------------
+Discord caps an application at 100 global chat-input commands, and the rest of
+the bot uses 77 of them, so the 49 effects cannot all have their own. They are
+reachable four ways:
 
-  /image effect:deepfry
-  /image effect:meme text:top text, bottom text
-  /image effect:hue amount:90 user:@someone
+1. Its own slash command, for the 25 most-used effects:
 
-Or as a dot-prefix command, which is how esmBot exposes them. Every effect name
-and alias works:
+     /deepfry
+     /magik
+     /hue amount:90 user:@someone
+     /meme text:top text, bottom text
 
-  .deepfry
-  .magik
-  .meme top text, bottom text
-  .snapchat sent from my snapchat
+   Which effects these are is the PROMOTED list in
+   src/bot/commands/images/effects.js. Moving a name in or out of that list adds
+   or removes its command; deploy-commands.js refuses to deploy past Discord's
+   cap, so an over-long list fails loudly rather than wiping every command.
+
+2. A grouped command, where several effects differ only by one setting:
+
+     /mirror direction:haah        (haah, waaw, woow, hooh)
+     /gifspeed mode:speed amount:2 (speed, slow, reverse, freeze, unfreeze)
+     /caption style:whisper        (caption, caption2, whisper, snapchat)
+
+3. /image, which reaches every effect and has autocomplete over all 49:
+
+     /image effect:tile
+     /image effect:vignette
+
+4. As a dot-prefix command, which is how esmBot exposes them. Every effect name
+   and every alias works, whether or not the effect has a slash command, and
+   prefix commands do not count against Discord's limit:
+
+     .deepfry
+     .magik
+     .haah
+     .speed 2
+     .meme top text, bottom text
 
 Run /image effect:list or /help category:effects to see the full list in
 Discord.
@@ -435,6 +441,13 @@ Limits
   retried at 384, then 256, then 192 px with fewer frames; the reply footer says
   when that happened.
 
+Effects reachable only through /image and the prefix
+  sharpen, sepia, vignette, flag, rotate, crop, tile, wall, circle, fade,
+  slide, and gif (gif duplicates /togif). These are the ones that lost the
+  coin toss for the last few command slots — they work exactly the same, they
+  just need /image or a prefix call. Promote any of them by adding the name to
+  PROMOTED in src/bot/commands/images/effects.js and demoting another.
+
 Effects that were deliberately not ported
   esmBot builds gamexplain, scott, soos, spotify, reddit, homebrew, sonic,
   uncanny, and its branded watermarks (iFunny, 9GAG, HyperCam, and friends) out
@@ -445,7 +458,9 @@ Effects that were deliberately not ported
   and /watermark takes arbitrary text rather than a fixed logo.
 
 Adding an effect
-  Add an entry to the EFFECTS object in src/services/imageEffects.js:
+  Add an entry to the EFFECTS object in src/services/imageEffects.js. It is
+  immediately reachable via /image and as a prefix command; add its name to
+  PROMOTED in src/bot/commands/images/effects.js to give it a slash command too.
 
     myeffect: {
       description: 'What it does',
@@ -522,14 +537,18 @@ prefixGreedy option, in which case that option soaks up the rest of the line:
 Attachment options are filled from the message itself, or from the message being
 replied to; they never consume a typed argument.
 
-Aliases come from three places:
-  - the Last.fm alias table (checked first, see the Social section)
-  - each command's prefixAliases export, for example .pfp -> /avatar
-  - every image effect name and alias, routed to /image with the effect
-    pre-filled, for example .fry -> /image effect:deepfry
+Aliases come from two places:
+  - each command's prefixAliases export, for example .pfp -> /avatar, or
+    .haah -> /mirror direction:haah when the entry carries a prepend
+  - every image effect name and alias that is not already a command, routed to
+    /image with the effect pre-filled, for example .tile -> /image effect:tile
 
 A real command name always wins over an alias, so .caption keeps running
 /caption. The table is built once per process and cached on the client.
+
+A bare number is understood where it makes sense: `.hue 90` and `.wide 4` put
+the number in the effect's `amount`, because an effect's own parameters are
+declared before the image-source options.
 
 
 Database
@@ -563,9 +582,6 @@ command_logs
 
 game_states
   Stores serialized persistent game state.
-
-lastfm_users
-  Stores linked Discord user ID to Last.fm username mappings.
 
 tags
   Per-server /tag snippets: name, content, owner, use count, and timestamps.
@@ -738,7 +754,7 @@ An image command says it cannot find an image:
   message history in that channel.
 - Attach the file, reply to the message that has it, or pass link:<url>.
 
-Weather/lyrics/Last.fm commands fail:
+Weather/lyrics commands fail:
 - Check the related API key in .env.
 
 
@@ -798,3 +814,5 @@ Image effect engine, flexible media resolution, tags, and the generalised
 prefix alias system added 2026-07-31.
 esmBot's caption fonts (Futura Extra Black Condensed, Helvetica Neue) vendored
 the same day, making /caption match esmBot's output.
+Last.fm commands removed and 25 image effects promoted to their own slash
+commands 2026-07-31.
