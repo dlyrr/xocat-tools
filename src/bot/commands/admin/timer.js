@@ -4,6 +4,8 @@ const { colors, emojis } = require('../../../utils/constants');
 const { dbRun } = require('../../../database/db');
 
 module.exports = {
+  prefixGreedy: 'message',
+  prefixAliases: ['countdown'],
   data: new SlashCommandBuilder()
     .setName('timer')
     .setDescription('Set a timer with a reminder')

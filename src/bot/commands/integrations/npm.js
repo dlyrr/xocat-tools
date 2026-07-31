@@ -74,6 +74,8 @@ async function search(interaction) {
 }
 
 module.exports = {
+  prefixGreedy: 'query',
+  prefixAliases: ['node', 'package'],
   data,
   async execute(interaction) {
     await interaction.deferReply({ flags: quiet(interaction) ? 64 : undefined });

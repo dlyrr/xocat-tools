@@ -5,6 +5,7 @@ const { colors, emojis } = require('../../../utils/constants');
 const CHALLENGE_TIMEOUT_MS = 180000;
 
 module.exports = {
+  prefixAliases: ['play', 'game'],
   data: new SlashCommandBuilder()
     .setName('games')
     .setDescription('Play mini-games')

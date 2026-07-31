@@ -4,6 +4,7 @@ const { colors } = require('../../../utils/constants');
 const axios = require('axios');
 
 module.exports = {
+  prefixAliases: ['epic', 'freegames'],
   data: new SlashCommandBuilder()
     .setName('epicgames')
     .setDescription('Epic Games Store commands')

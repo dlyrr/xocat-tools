@@ -33,6 +33,8 @@ function testRegex(pattern, text, flags) {
 const truncate = (value, max) => value.length > max ? `${value.slice(0, max - 3)}...` : value;
 
 module.exports = {
+  prefixGreedy: 'text',
+  prefixAliases: ['re', 'regexp'],
   data: new SlashCommandBuilder()
     .setName('regex')
     .setDescription('Safely test a JavaScript regular expression against text')

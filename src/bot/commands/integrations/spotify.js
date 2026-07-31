@@ -114,6 +114,8 @@ function spotifyEmbed(type, item) {
 }
 
 module.exports = {
+  prefixGreedy: 'query',
+  prefixAliases: ['sp'],
   data,
   async execute(interaction) {
     await interaction.deferReply({ flags: quiet(interaction) ? 64 : undefined });

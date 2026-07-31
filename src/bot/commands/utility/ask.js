@@ -32,6 +32,8 @@ const SYSTEM_PROMPT = [
 ].join('\n');
 
 module.exports = {
+  prefixGreedy: 'prompt',
+  prefixAliases: ['ai', 'gemini', 'gpt'],
   skipUsageTracking: true,
   data: new SlashCommandBuilder()
     .setName('ask')

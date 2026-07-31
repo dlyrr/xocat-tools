@@ -4,6 +4,8 @@ const { colors } = require('../../../utils/constants');
 const axios = require('axios');
 
 module.exports = {
+  prefixGreedy: 'song',
+  prefixAliases: ['genius'],
   data: new SlashCommandBuilder()
     .setName('lyrics')
     .setDescription('Get song lyrics using an artist and title')

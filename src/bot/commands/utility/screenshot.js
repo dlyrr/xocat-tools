@@ -4,6 +4,7 @@ const net = require('net');
 const { colors } = require('../../../utils/constants');
 
 module.exports = {
+  prefixAliases: ['ss', 'shot', 'webshot'],
   data: new SlashCommandBuilder().setName('screenshot').setDescription('Take a screenshot of a website')
     .addStringOption(o => o.setName('url').setDescription('Public website URL').setRequired(true).setMaxLength(1000)).addBooleanOption(
     o => o.setName("quiet").setDescription("Make the response only visible to you").setRequired(false)

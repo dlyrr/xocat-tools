@@ -5,6 +5,7 @@ const axios = require('axios');
 const { getPublicStream } = require('../../../utils/network');
 
 module.exports = {
+  prefixAliases: ['ipinfo'],
   data: new SlashCommandBuilder()
     .setName('ip')
     .setDescription('IP utilities')

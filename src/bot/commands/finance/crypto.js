@@ -4,6 +4,7 @@ const { emojis, cryptoChains } = require('../../../utils/constants');
 const crypto = require('../../../services/cryptoService');
 
 module.exports = {
+  prefixAliases: ['coin'],
   data: new SlashCommandBuilder()
     .setName('crypto')
     .setDescription('Cryptocurrency commands')

@@ -4,6 +4,7 @@ const { colors } = require('../../../utils/constants');
 const { convertCurrency } = require('../../../services/cryptoService');
 
 module.exports = {
+  prefixAliases: ['currency', 'fx'],
   data: new SlashCommandBuilder()
     .setName('exchange')
     .setDescription('Convert between supported fiat currencies')

@@ -14,6 +14,7 @@ function formatDuration(totalSeconds) {
 const bytes = value => `${(value / 1024 / 1024).toFixed(1)} MB`;
 
 module.exports = {
+  prefixAliases: ['up'],
   data: new SlashCommandBuilder()
     .setName('uptime')
     .setDescription('Show bot uptime, memory use, commands, and process statistics')

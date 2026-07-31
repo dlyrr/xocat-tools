@@ -1,5 +1,6 @@
 const { ApplicationCommandOptionType, PermissionFlagsBits } = require('discord.js');
 const { incrementCommandUsage } = require('../database/db');
+const { listEffects } = require('./imageEffects');
 
 const PREFIX = '.';
 const LASTFM_SUBCOMMANDS = new Set([
@@ -245,7 +246,49 @@ function normalizeLastFmTokens(subcommand, inputTokens) {
   return output;
 }
 
-function applyAliases(name, tokens) {
+/**
+ * Build the prefix alias table for a client.
+ *
+ * Two sources feed it, in priority order:
+ *   1. `prefixAliases` exported by a command module
+ *   2. every image effect name/alias, routed to `/image` with the effect
+ *      pre-filled — this is what makes `.deepfry`, `.magik`, `.spin` and the
+ *      rest work the way they do in esmBot
+ *
+ * A real command name always wins, so `.caption` keeps running /caption.
+ */
+function buildAliasRegistry(client) {
+  const registry = new Map();
+
+  for (const [, command] of client.commands) {
+    const target = command.data?.name;
+    if (!target) continue;
+    for (const alias of command.prefixAliases || []) {
+      const key = String(alias).toLowerCase();
+      if (client.commands.has(key) || registry.has(key)) continue;
+      registry.set(key, { name: target });
+    }
+  }
+
+  if (client.commands.has('image')) {
+    for (const effect of listEffects()) {
+      for (const alias of [effect.name, ...(effect.aliases || [])]) {
+        const key = String(alias).toLowerCase();
+        if (client.commands.has(key) || registry.has(key)) continue;
+        registry.set(key, { name: 'image', prepend: [effect.name] });
+      }
+    }
+  }
+
+  return registry;
+}
+
+function getAliasRegistry(client) {
+  if (!client.prefixAliasRegistry) client.prefixAliasRegistry = buildAliasRegistry(client);
+  return client.prefixAliasRegistry;
+}
+
+function applyAliases(name, tokens, registry = null) {
   if (name === 'lastfm') {
     const requested = String(tokens[0] || '').toLowerCase();
     const subcommand = LASTFM_SUBCOMMANDS.has(requested)
@@ -257,6 +300,10 @@ function applyAliases(name, tokens) {
 
   const subcommand = LASTFM_PREFIX_ALIASES.get(name);
   if (subcommand) return { name: 'lastfm', tokens: normalizeLastFmTokens(subcommand, tokens) };
+
+  const mapped = registry?.get(name);
+  if (mapped) return { name: mapped.name, tokens: [...(mapped.prepend || []), ...tokens] };
+
   return { name, tokens };
 }
 
@@ -327,13 +374,30 @@ async function resolveValue(message, option, raw) {
       throw new Error(`\`${option.name}\` must be a user or role mention.`);
     }
     case ApplicationCommandOptionType.Attachment:
-      return message.attachments.first() || null;
+      return resolveAttachment(message);
     default:
       return raw;
   }
 }
 
-async function parseOptions(message, schemaOptions, tokens) {
+/**
+ * Attachments cannot be typed as text, so they come from the message itself —
+ * either the invoking message or, failing that, the message it replies to.
+ */
+async function resolveAttachment(message) {
+  if (message.attachments?.size) return message.attachments.first();
+
+  const reference = message.reference || message.messageReference;
+  const referencedId = reference?.messageId || reference?.messageID;
+  if (!referencedId) return null;
+
+  const replied = await message.channel?.messages?.fetch(referencedId).catch(() => null);
+  return replied?.attachments?.first() || null;
+}
+
+async function parseOptions(message, schemaOptions, tokens, options = {}) {
+  const greedy = options.greedy ? String(options.greedy).toLowerCase() : null;
+
   const named = new Map();
   const positional = [];
   for (const token of tokens) {
@@ -346,9 +410,26 @@ async function parseOptions(message, schemaOptions, tokens) {
   let cursor = 0;
   for (const option of schemaOptions) {
     if ([ApplicationCommandOptionType.Subcommand, ApplicationCommandOptionType.SubcommandGroup].includes(option.type)) continue;
+
+    // Attachment options never consume a positional token — there is nothing a
+    // user could type there — so they must not shift the cursor.
+    if (option.type === ApplicationCommandOptionType.Attachment) {
+      const attachment = await resolveAttachment(message);
+      if (!attachment && option.required) throw new Error(`Attach a file for \`${option.name}\`, or reply to a message that has one.`);
+      values.set(option.name, attachment || null);
+      continue;
+    }
+
     let raw = named.has(option.name) ? named.get(option.name) : positional[cursor];
-    if (raw !== undefined && !named.has(option.name)) cursor += 1;
-    if (option.type === ApplicationCommandOptionType.Attachment && raw === undefined && message.attachments.size) raw = '__attachment__';
+    if (raw !== undefined && !named.has(option.name)) {
+      if (option.name === greedy) {
+        // Soak up the rest of the line so captions do not need quoting.
+        raw = positional.slice(cursor).join(' ');
+        cursor = positional.length;
+      } else {
+        cursor += 1;
+      }
+    }
     if (raw === undefined || raw === '') {
       if (option.required) throw new Error(`Missing required option \`${option.name}\`.`);
       values.set(option.name, null);
@@ -451,7 +532,7 @@ async function handlePrefixCommand(message) {
   if (!message.content?.startsWith(PREFIX) || message.content.startsWith('..') || message.author.bot) return false;
   const tokens = tokenize(message.content.slice(PREFIX.length).trim());
   if (!tokens.length) return false;
-  const alias = applyAliases(tokens.shift().toLowerCase(), tokens);
+  const alias = applyAliases(tokens.shift().toLowerCase(), tokens, getAliasRegistry(message.client));
   const command = message.client.commands.get(alias.name);
   if (!command) return false;
 
@@ -463,7 +544,7 @@ async function handlePrefixCommand(message) {
       if (!message.member.permissions.has(required)) throw new Error('You do not have permission to use this command.');
     }
     const selected = selectSchema(data, alias.tokens);
-    const values = await parseOptions(message, selected.options, selected.tokens);
+    const values = await parseOptions(message, selected.options, selected.tokens, { greedy: command.prefixGreedy });
     const interaction = new PrefixInteraction(message, alias.name, selected.group, selected.subcommand, values);
     await command.execute(interaction);
     try {
@@ -483,9 +564,12 @@ module.exports = {
   PREFIX,
   PrefixInteraction,
   applyAliases,
+  buildAliasRegistry,
+  getAliasRegistry,
   handlePrefixCommand,
   normalizeLastFmTokens,
   parseOptions,
+  resolveAttachment,
   selectSchema,
   tokenize,
 };

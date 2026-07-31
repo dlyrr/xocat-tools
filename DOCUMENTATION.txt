@@ -72,6 +72,23 @@ npm run deploy-commands
   Discord. If DISCORD_GUILD_ID is set, commands deploy to that guild instantly.
   Commands are also deployed globally, which can take up to about 1 hour.
 
+npm test
+  Runs all three offline smoke tests (no Discord connection or API keys needed):
+  image effects, the prefix parser, and the media resolver.
+
+npm run test:effects
+  Runs every registered image effect against a generated still image and a
+  generated animated GIF, printing the output size, format, and timing.
+  Pass effect names to check only those, and --write <dir> to save the results:
+
+    node scripts/smoke-effects.js --write /tmp/out magik globe meme
+
+npm run test:prefix
+  Checks prefix alias resolution, greedy text options, and attachment handling.
+
+npm run test:media
+  Checks the media resolution order (attachment, link, avatar, reply, history).
+
 
 Environment Variables
 ---------------------
@@ -142,7 +159,38 @@ src/bot/events/interactionCreate.js
   interactions, and autocomplete.
 
 src/bot/commands/
-  Slash command files grouped by category.
+  Slash command files grouped by category. Files whose name starts with an
+  underscore and ends in .cjs are shared helpers, not commands, and the loader
+  skips them.
+
+src/bot/commands/images/
+  The image-editing commands: /image (the effect engine) plus /meme,
+  /motivate, /speechbubble, and /watermark.
+
+src/services/imageEffects.js
+  The image effect registry and all effect implementations. See "Image Effects".
+
+src/services/mediaResolver.js
+  Works out which image a command should operate on, and downloads it safely.
+  See "Finding Images".
+
+src/services/mediaCommand.js
+  Shared runner for effect commands: resolve, apply, retry smaller if the result
+  is too big to upload, reply.
+
+src/services/tagService.js
+  Storage and permission rules for the per-server /tag system.
+
+src/services/prefixCommandService.js
+  Bridges dot-prefix messages onto the slash command schemas. See
+  "Prefix Commands".
+
+src/utils/frames.js
+  Frame decode/encode, displacement remapping, and text rendering primitives
+  used by the effect engine.
+
+scripts/
+  Offline smoke tests. See the npm scripts section.
 
 src/api/server.js
   Express API server with /health, /stats, /scrape, and /api/scrape routes.
@@ -195,6 +243,11 @@ Each command file should export:
 
 Optional:
 - autocomplete(interaction): async function for autocomplete options
+- guildOnly: true to refuse the command outside a server
+- skipUsageTracking: true to keep the command out of command_logs
+- prefixAliases: extra dot-prefix names for the command, e.g. ['pfp', 'icon']
+- prefixGreedy: the name of a string option that should soak up the rest of a
+  dot-prefix line, so multi-word input does not need quotes
 
 
 Command Categories
@@ -208,11 +261,21 @@ Finance:
 
 Fun:
 - 8ball
+- bird
 - cat
+- dice
+- dog
 - games-fun
 
 Games:
 - epicgames
+
+Images:
+- image      (the effect engine — around 50 effects, see "Image Effects")
+- meme
+- motivate
+- speechbubble
+- watermark
 
 Roblox:
 - exploit
@@ -252,20 +315,202 @@ account to this bot. They do not use .fmbot's private/global user database.
 
 Utility:
 - about
+- caption
 - compress
 - convert
+- count
 - help
 - imgtotext
 - ip
+- lengthen
 - lookup
 - paste
 - ping
 - profile
+- raw
 - scrape
 - screenshot
 - shorten
+- snowflake
+- sticker
+- tag
 - togif
+- uncaption
 - weather
+
+
+Image Effects
+-------------
+The bot ships a port of esmBot's image-editing command set. esmBot implements
+its effects as native libvips pipelines; sharp is libvips too, so the colour,
+geometry, and compositing effects translate almost directly. Two things sharp
+does not expose are implemented in JavaScript instead:
+
+- mapim (displacement remapping), in src/utils/frames.js, which powers circle,
+  swirl, explode, implode, wall, and globe
+- ImageMagick's liquid rescale, implemented as seam carving in
+  src/services/imageEffects.js, which powers magik
+
+Every effect operates on decoded RGBA frames, so all of them work on still
+images and animations alike. A still input becomes a 15 or 30 frame animation
+for the effects that are inherently animated (spin, squish, globe, bounce,
+fade, slide).
+
+Running an effect:
+
+  /image effect:deepfry
+  /image effect:meme text:top text, bottom text
+  /image effect:hue amount:90 user:@someone
+
+Or as a dot-prefix command, which is how esmBot exposes them. Every effect name
+and alias works:
+
+  .deepfry
+  .magik
+  .meme top text, bottom text
+  .snapchat sent from my snapchat
+
+Run /image effect:list or /help category:effects to see the full list in
+Discord.
+
+Colour and filters:
+  blur, sharpen (unblur), grayscale (gray, greyscale, grey, bw),
+  invert (inverse, negate, negative), sepia, hue (hueshift, recolor),
+  deepfry (fry, nuke, df), jpeg (jpg, morejpeg, needsmorejpeg, jpegify),
+  pixelate (pixel, small), vignette, flag
+
+Geometry:
+  flip (upsidedown), flop, haah (mirror2), waaw (mirror), woow (mirror3),
+  hooh (mirror4), rotate, crop, wide (w19), stretch (aspect, ratio),
+  squish, tile, wall
+
+Distortion:
+  circle (cblur, radial, radialblur), swirl (whirl), explode (exp),
+  implode (imp), globe (sphere), spin, magik (magic, cas, contentawarescale)
+
+Text:
+  meme, motivate (poster, demotivational), caption, caption2 (ifunny),
+  whisper, snapchat (snap), speechbubble (speech, bubble), watermark (wm),
+  uncaption (uncap)
+
+Animation:
+  reverse (backwards), speed (fast, faster), slow (slower), freeze (noloop,
+  once), unfreeze, bounce (bouncy), fade (fadein), slide (shift), gif (gifify)
+
+Shared options
+  text      Text for the effects that need it. meme and motivate split the top
+            and bottom halves on a comma; escape a literal comma with \,
+  amount    Effect strength. What it controls depends on the effect: degrees for
+            hue and rotate, quality for jpeg, a multiplier for speed and slow,
+            opacity for watermark, bubble size for speechbubble, and so on.
+  font      impact, futura, times, helvetica, arial, serif, sans, mono.
+            "impact" renders with the bundled Anton typeface and the others map
+            onto metric-compatible system fonts, since Impact, Times New Roman,
+            and Helvetica Neue cannot be redistributed.
+  format    Force gif, png, or webp output.
+
+Limits
+  Inputs are capped at 25 MB and downscaled to 512 px on the longest side
+  (320 px for globe and magik, which are the expensive ones). Animations are
+  capped at 60 frames. If the result is still too large to upload, the effect is
+  retried at 384, then 256, then 192 px with fewer frames; the reply footer says
+  when that happened.
+
+Effects that were deliberately not ported
+  esmBot builds gamexplain, scott, soos, spotify, reddit, homebrew, sonic,
+  uncanny, and its branded watermarks (iFunny, 9GAG, HyperCam, and friends) out
+  of bundled third-party artwork. Those images are copyrighted and do not belong
+  in this repository, so those effects are absent. Where an overlay can be drawn
+  instead of shipped it was kept: speechbubble draws its bubble as SVG, vignette
+  generates its own gradient, flag draws pride flags from stripe definitions,
+  and /watermark takes arbitrary text rather than a fixed logo.
+
+Adding an effect
+  Add an entry to the EFFECTS object in src/services/imageEffects.js:
+
+    myeffect: {
+      description: 'What it does',
+      aliases: ['alias1'],
+      category: 'colour',
+      params: { amount: { min: 0, max: 10, default: 1 } },
+      run: (image, params) => mapFrames(image, frame => frame.blur(2)),
+    }
+
+  `image` is { frames, width, height, delays, loop, animated }; `run` returns the
+  same shape. Set alwaysGif: true if a still input should produce an animation,
+  and maxSize to cap the working resolution. The effect immediately becomes
+  available to /image, to /help, and as a dot-prefix command; add it to
+  scripts/smoke-effects.js PARAMS if it needs sample input.
+
+
+Finding Images
+--------------
+Media commands do not require an attachment. src/services/mediaResolver.js
+looks for an image in this order and takes the first hit:
+
+1. the command's file (or image) attachment option
+2. the link option: an image URL, a custom emoji, or a user ID
+3. the user option, which resolves to that user's avatar
+4. attachments, embeds, or stickers on the invoking message
+5. a custom emoji, unicode emoji, or bare image URL in the message text
+6. the same checks against the message being replied to
+7. the same checks against the last 50 messages in the channel
+
+So all of these do the same thing:
+
+  /image effect:deepfry file:<upload>
+  .deepfry                         (with an image attached)
+  .deepfry                         (replying to a message with an image)
+  .deepfry https://example.com/cat.png
+  .deepfry <:blobcat:123456789012345678>
+  .deepfry @someone
+  .deepfry                         (uses the last image posted in the channel)
+
+Unicode emoji resolve to Twemoji artwork. Lottie stickers are skipped, since
+they are vector animations that sharp cannot read.
+
+Downloads go through src/utils/network.js, which resolves the hostname and
+refuses private, loopback, and link-local addresses at every redirect hop, so a
+user-supplied URL cannot be used to reach anything on the host's network. The
+size ceiling is enforced while streaming, so an oversized file never lands in
+memory in full.
+
+Commands using the resolver: /image, /meme, /motivate, /speechbubble,
+/watermark, /caption, /uncaption, /togif, /compress, /imgtotext, /qr decode,
+and /raw.
+
+
+Prefix Commands
+---------------
+src/services/prefixCommandService.js runs slash commands from ordinary messages
+starting with "." It reads each command's own SlashCommandBuilder schema, so a
+command never needs prefix-specific code.
+
+Arguments can be positional or named:
+
+  .dice sides:20 count:3
+  .dice 20 3
+  .image hue amount:90
+
+Multi-word values normally need quotes, unless the command declares a
+prefixGreedy option, in which case that option soaks up the rest of the line:
+
+  .meme top text, bottom text
+  .timer 10m take out the bins
+  .tag add welcome hello and welcome to the server
+  .8ball will it rain tomorrow
+
+Attachment options are filled from the message itself, or from the message being
+replied to; they never consume a typed argument.
+
+Aliases come from three places:
+  - the Last.fm alias table (checked first, see the Social section)
+  - each command's prefixAliases export, for example .pfp -> /avatar
+  - every image effect name and alias, routed to /image with the effect
+    pre-filled, for example .fry -> /image effect:deepfry
+
+A real command name always wins over an alias, so .caption keeps running
+/caption. The table is built once per process and cached on the client.
 
 
 Database
@@ -302,6 +547,10 @@ game_states
 
 lastfm_users
   Stores linked Discord user ID to Last.fm username mappings.
+
+tags
+  Per-server /tag snippets: name, content, owner, use count, and timestamps.
+  Names are stored lower-cased, so lookups are case-insensitive.
 
 Database helpers in src/database/db.js:
 - initDatabase()
@@ -461,6 +710,14 @@ Scrape command/API fails:
 Image/OCR features fail:
 - Confirm eng.traineddata exists.
 - Confirm sharp/tesseract dependencies are installed correctly.
+- sharp must be 0.34 or newer. The effect engine builds animations with
+  sharp's join option, which older releases do not have.
+- Run npm run test:effects to check the whole effect registry offline.
+
+An image command says it cannot find an image:
+- The resolver only scans the last 50 messages, and only if the bot can read
+  message history in that channel.
+- Attach the file, reply to the message that has it, or pass link:<url>.
 
 Weather/lyrics/Last.fm commands fail:
 - Check the related API key in .env.
@@ -518,3 +775,5 @@ Do not delete these unless you know the effect:
 Last Updated
 ------------
 Generated by Codex on 2026-06-23.
+Image effect engine, flexible media resolution, tags, and the generalised
+prefix alias system added 2026-07-31.

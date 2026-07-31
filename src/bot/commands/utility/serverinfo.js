@@ -2,6 +2,7 @@ const { ChannelType, EmbedBuilder, SlashCommandBuilder } = require('discord.js')
 const { colors } = require('../../../utils/constants');
 
 module.exports = {
+  prefixAliases: ['guildinfo', 'server'],
   data: new SlashCommandBuilder()
     .setName('serverinfo')
     .setDescription('Show information and statistics for this server')

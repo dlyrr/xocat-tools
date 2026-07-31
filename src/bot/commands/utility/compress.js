@@ -7,6 +7,12 @@ const ffmpegPath = require('ffmpeg-static');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const {
+  MediaNotFoundError,
+  looksLikeImage,
+  looksLikeVideo,
+  requireMedia,
+} = require('../../../services/mediaResolver');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 
@@ -14,31 +20,46 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('compress')
     .setDescription('Compress an image or video to a target size')
-    .addAttachmentOption(o => o.setName('file').setDescription('Image or video to compress').setRequired(true))
     .addIntegerOption(o => o.setName('mb').setDescription('Maximum output size in MB').setRequired(true).setMinValue(1).setMaxValue(25))
+    .addAttachmentOption(o => o.setName('file').setDescription('Image or video to compress (defaults to the most recent one in the channel)').setRequired(false))
+    .addStringOption(o => o.setName('link').setDescription('A media URL to compress instead of an attachment').setRequired(false).setMaxLength(500))
     .addBooleanOption(o => o.setName('quiet').setDescription('Make the response only visible to you').setRequired(false)),
+
+  prefixAliases: ['shrink'],
 
   async execute(interaction) {
     const quiet = interaction.options.getBoolean('quiet') ?? false;
     const targetMB = interaction.options.getInteger('mb');
     const targetBytes = targetMB * 1024 * 1024;
-    const file = interaction.options.getAttachment('file');
-    const safeName = path.basename(file.name || 'upload');
-    const isVideo = file.contentType?.startsWith('video/');
-    const isImage = file.contentType?.startsWith('image/') && file.contentType !== 'image/gif';
 
     await interaction.deferReply({ flags: quiet ? 64 : undefined });
+
+    let file;
+    try {
+      file = await requireMedia(interaction, {
+        allowVideo: true,
+        userOption: null,
+        noMediaMessage: 'I could not find anything to compress. Attach an image or video, reply to a message with one, or paste a link.',
+      });
+    } catch (error) {
+      if (error instanceof MediaNotFoundError) return interaction.editReply(`❌ ${error.message}`);
+      throw error;
+    }
+
+    const safeName = path.basename(file.name || 'upload');
+    const isVideo = looksLikeVideo(file.url, file.contentType);
+    const isImage = !isVideo && looksLikeImage(file.url, file.contentType) && file.contentType !== 'image/gif' && !/\.gif(\?|#|$)/i.test(file.url);
 
     if (!isImage && !isVideo) {
       return interaction.editReply('❌ Unsupported file type. Use a PNG/JPEG/WebP image or a video.');
     }
-    if (isImage && file.size > 20 * 1024 * 1024) {
+    if (isImage && Number.isFinite(file.size) && file.size > 20 * 1024 * 1024) {
       return interaction.editReply('❌ Image is larger than the 20 MB processing limit.');
     }
-    if (isVideo && file.size > 100 * 1024 * 1024) {
+    if (isVideo && Number.isFinite(file.size) && file.size > 100 * 1024 * 1024) {
       return interaction.editReply('❌ Video is larger than the 100 MB processing limit.');
     }
-    if (file.size <= targetBytes) {
+    if (Number.isFinite(file.size) && file.size <= targetBytes) {
       return interaction.editReply(`✅ Already below ${targetMB} MB (${formatMB(file.size)} MB).`);
     }
 
@@ -49,6 +70,11 @@ module.exports = {
 
     try {
       await downloadFile(file.url, tempIn);
+      // A resolved URL may not report a size up front, so measure what we got.
+      const originalSize = Number.isFinite(file.size) ? file.size : fs.statSync(tempIn).size;
+      if (originalSize <= targetBytes) {
+        return interaction.editReply(`✅ Already below ${targetMB} MB (${formatMB(originalSize)} MB).`);
+      }
 
       if (isImage) {
         await interaction.editReply('⚙️ Compressing image...');
@@ -67,7 +93,7 @@ module.exports = {
         .setColor(colors.utility)
         .setTitle('Compression Complete')
         .addFields(
-          { name: 'Original', value: `${formatMB(file.size)} MB`, inline: true },
+          { name: 'Original', value: `${formatMB(originalSize)} MB`, inline: true },
           { name: 'Output', value: `${formatMB(finalSize)} MB`, inline: true },
           { name: 'Format', value: isImage ? 'JPEG' : 'MP4', inline: true },
         )

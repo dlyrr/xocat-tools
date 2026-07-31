@@ -4,6 +4,7 @@ const { colors, emojis } = require('../../../utils/constants');
 const { dbGet } = require('../../../database/db');
 
 module.exports = {
+  prefixAliases: ['botinfo', 'stats2'],
   data: new SlashCommandBuilder()
     .setName('about')
     .setDescription('About the bot').addBooleanOption(

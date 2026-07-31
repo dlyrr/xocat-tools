@@ -4,6 +4,8 @@ const { colors } = require('../../../utils/constants');
 const { getCurrentWeather, getWindDirection } = require('../../../services/weatherService');
 
 module.exports = {
+  prefixGreedy: 'location',
+  prefixAliases: ['forecast'],
   data: new SlashCommandBuilder()
     .setName('weather')
     .setDescription('Check current weather with a visual dashboard')

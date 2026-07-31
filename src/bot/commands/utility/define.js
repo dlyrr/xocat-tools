@@ -14,6 +14,8 @@ async function fetchDefinition(word) {
 }
 
 module.exports = {
+  prefixGreedy: 'word',
+  prefixAliases: ['dict', 'dictionary'],
   data: new SlashCommandBuilder()
     .setName('define')
     .setDescription('Look up an English word, pronunciation, examples, and synonyms')

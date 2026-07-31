@@ -62,6 +62,8 @@ function currentDateInZone(zone) {
 }
 
 module.exports = {
+  prefixGreedy: 'location',
+  prefixAliases: ['tz', 'time'],
   data: new SlashCommandBuilder()
     .setName('timezone')
     .setDescription('Show current time or convert between timezones')

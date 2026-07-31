@@ -2,6 +2,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const { shortenUrl } = require('../../../services/ezhostService');
 
 module.exports = {
+  prefixAliases: ['short', 'shorturl'],
   data: new SlashCommandBuilder()
     .setName('shorten')
     .setDescription('Shorten a URL using e-z.host')

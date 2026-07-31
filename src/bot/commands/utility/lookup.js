@@ -5,6 +5,7 @@ const { isWhitelisted } = require('../../../utils/premium');
 const { paginate } = require('../../../utils/pagination');
 
 module.exports = {
+  prefixAliases: ['fetchuser'],
   data: new SlashCommandBuilder().setName('lookup').setDescription('[whitelisted only] Checks if a discord user is in any servers affiliated with the bot')
     .addUserOption(o => o.setName('user').setDescription('User to look up').setRequired(true)).addBooleanOption(
     o => o.setName("quiet").setDescription("Make the response only visible to you").setRequired(false)

@@ -10,6 +10,7 @@ function digest(text, algorithm) {
 }
 
 module.exports = {
+  prefixAliases: ['digest'],
   data: new SlashCommandBuilder()
     .setName('hash')
     .setDescription('Generate or verify one-way cryptographic hashes')

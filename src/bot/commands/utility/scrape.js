@@ -233,6 +233,7 @@ function cleanup(...paths) {
 }
 
 module.exports = {
+  prefixAliases: ['fetchpage', 'readpage'],
   data: new SlashCommandBuilder()
     .setName('scrape')
     .setDescription('Download media from a supported social-media URL')

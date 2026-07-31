@@ -3,6 +3,8 @@ const { getMedia, mediaEmbed } = require('./anilist.cjs');
 const { apiError, quiet } = require('./_shared.cjs');
 
 module.exports = {
+  prefixGreedy: 'query',
+  prefixAliases: ['comic'],
   data: new SlashCommandBuilder()
     .setName('manga')
     .setDescription('Search manga and show detailed information')

@@ -14,6 +14,8 @@ async function fetchUrban(term) {
 }
 
 module.exports = {
+  prefixGreedy: 'term',
+  prefixAliases: ['ud', 'urbandictionary'],
   data: new SlashCommandBuilder()
     .setName('urban')
     .setDescription('Search Urban Dictionary for slang definitions')

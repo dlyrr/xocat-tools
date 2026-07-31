@@ -148,6 +148,7 @@ async function achievementEmbed(input, appid) {
 }
 
 module.exports = {
+  prefixAliases: ['valve'],
   data,
   async execute(interaction) {
     await interaction.deferReply({ flags: quiet(interaction) ? 64 : undefined });

@@ -7,6 +7,7 @@ function validHttpUrl(value) {
 }
 
 module.exports = {
+  prefixAliases: ['inv', 'addbot'],
   data: new SlashCommandBuilder()
     .setName('invite')
     .setDescription('Get the bot invite link and related links')

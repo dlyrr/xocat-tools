@@ -29,6 +29,7 @@ function eventDate(data, action) {
 }
 
 module.exports = {
+  prefixAliases: ['domain'],
   data: new SlashCommandBuilder()
     .setName('whois')
     .setDescription('Look up public domain registration information through RDAP')

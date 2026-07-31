@@ -106,6 +106,8 @@ function channelEmbed(channel) {
 }
 
 module.exports = {
+  prefixGreedy: 'query',
+  prefixAliases: ['yt'],
   data,
   async execute(interaction) {
     await interaction.deferReply({ flags: quiet(interaction) ? 64 : undefined });

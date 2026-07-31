@@ -120,6 +120,20 @@ CREATE TABLE IF NOT EXISTS roblox_update_state (
     seen_at INTEGER NOT NULL
 );
 
+-- Per-server tags (esmBot-style named snippets)
+CREATE TABLE IF NOT EXISTS tags (
+    guild_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    content TEXT NOT NULL,
+    author_id TEXT NOT NULL,
+    uses INTEGER DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (guild_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tags_guild ON tags (guild_id, name);
+
 -- Moderation history and per-server configuration
 CREATE TABLE IF NOT EXISTS moderation_cases (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -2,6 +2,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { colors } = require('../../../utils/constants');
 
 module.exports = {
+  prefixAliases: ['pong', 'latency'],
   data: new SlashCommandBuilder()
     .setName('ping')
     .setDescription('Check the bot\'s latency')

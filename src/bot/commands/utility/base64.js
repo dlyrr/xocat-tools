@@ -23,6 +23,8 @@ function responsePayload(title, output, quiet) {
 }
 
 module.exports = {
+  prefixGreedy: 'text',
+  prefixAliases: ['b64'],
   data: new SlashCommandBuilder()
     .setName('base64')
     .setDescription('Encode readable text as Base64 or decode it back to text')

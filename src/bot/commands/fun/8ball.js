@@ -3,6 +3,8 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { colors, emojis, eightBallResponses } = require('../../../utils/constants');
 
 module.exports = {
+  prefixGreedy: 'question',
+  prefixAliases: ['8b', 'magic8ball', 'eightball'],
   data: new SlashCommandBuilder()
     .setName('8ball')
     .setDescription('Ask the magic 8ball a question')

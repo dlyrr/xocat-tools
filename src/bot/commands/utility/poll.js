@@ -10,6 +10,7 @@ function parseDuration(value) {
 }
 
 module.exports = {
+  prefixAliases: ['vote'],
   data: new SlashCommandBuilder()
     .setName('poll')
     .setDescription('Create a button poll with multiple choices')

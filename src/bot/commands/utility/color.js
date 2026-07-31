@@ -40,6 +40,8 @@ function conversions({ r, g, b }) {
 }
 
 module.exports = {
+  prefixGreedy: 'value',
+  prefixAliases: ['colour', 'hex'],
   data: new SlashCommandBuilder()
     .setName('color')
     .setDescription('Preview a color and convert it to HEX, RGB, HSL, and HSV')

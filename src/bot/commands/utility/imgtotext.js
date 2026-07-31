@@ -1,22 +1,32 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { colors } = require('../../../utils/constants');
 const Tesseract = require('tesseract.js');
+const { MediaNotFoundError, requireMedia } = require('../../../services/mediaResolver');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('imgtotext')
     .setDescription('Extract text from an image using OCR')
-    .addAttachmentOption(o => o.setName('image').setDescription('The image to extract text from').setRequired(true))
+    .addAttachmentOption(o => o.setName('image').setDescription('The image to read (defaults to the most recent one in the channel)').setRequired(false))
+    .addStringOption(o => o.setName('link').setDescription('An image URL, custom emoji, or user ID to read instead of an attachment').setRequired(false).setMaxLength(500))
+    .addUserOption(o => o.setName('user').setDescription("Read text from this user's avatar").setRequired(false))
     .addBooleanOption(o => o.setName('quiet').setDescription('Make the response only visible to you').setRequired(false)),
+
+  prefixAliases: ['ocr', 'readtext'],
 
   async execute(interaction) {
     const quiet = interaction.options.getBoolean('quiet') ?? false;
     await interaction.deferReply({ flags: quiet ? 64 : undefined });
 
-    const attachment = interaction.options.getAttachment('image');
-
-    if (!attachment.contentType?.startsWith('image/')) {
-      return interaction.editReply('❌ Please upload a valid image file!');
+    let attachment;
+    try {
+      attachment = await requireMedia(interaction, {
+        attachmentOption: 'image',
+        noMediaMessage: 'I could not find an image to read. Attach one, reply to a message with one, paste a link, or mention a user to use their avatar.',
+      });
+    } catch (error) {
+      if (error instanceof MediaNotFoundError) return interaction.editReply(`❌ ${error.message}`);
+      throw error;
     }
 
     try {

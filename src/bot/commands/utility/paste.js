@@ -2,6 +2,8 @@ const { SlashCommandBuilder } = require('discord.js');
 const { createPaste } = require('../../../services/ezhostService');
 
 module.exports = {
+  prefixGreedy: 'content',
+  prefixAliases: ['bin', 'hastebin'],
   data: new SlashCommandBuilder()
     .setName('paste')
     .setDescription('Create a paste on e-z.host')

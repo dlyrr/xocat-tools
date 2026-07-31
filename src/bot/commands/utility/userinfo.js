@@ -7,6 +7,7 @@ const IMPORTANT_PERMISSIONS = [
 ];
 
 module.exports = {
+  prefixAliases: ['whois-user', 'memberinfo'],
   data: new SlashCommandBuilder()
     .setName('userinfo')
     .setDescription('Show account and server membership information')

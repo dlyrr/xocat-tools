@@ -42,6 +42,8 @@ function inspect(value) {
 }
 
 module.exports = {
+  prefixGreedy: 'input',
+  prefixAliases: ['jsonfmt'],
   data: new SlashCommandBuilder()
     .setName('json')
     .setDescription('Format, validate, minify, or inspect JSON')

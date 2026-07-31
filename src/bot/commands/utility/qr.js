@@ -2,6 +2,7 @@ const axios = require('axios');
 const FormData = require('form-data');
 const { AttachmentBuilder, EmbedBuilder, SlashCommandBuilder } = require('discord.js');
 const { colors } = require('../../../utils/constants');
+const { MediaNotFoundError, requireMedia } = require('../../../services/mediaResolver');
 
 const MAX_IMAGE_SIZE = 8 * 1024 * 1024;
 const truncate = (value, max = 1000) => value.length > max ? `${value.slice(0, max - 3)}...` : value;
@@ -38,14 +39,16 @@ async function decodeQr(fileUrl) {
 }
 
 module.exports = {
+  prefixAliases: ['qrcode'],
   data: new SlashCommandBuilder()
     .setName('qr')
     .setDescription('Generate or decode QR codes')
     .addSubcommand(sub => sub.setName('generate').setDescription('Generate a QR code from text or a URL')
       .addStringOption(o => o.setName('text').setDescription('Text or URL to encode').setRequired(true).setMaxLength(1500))
       .addBooleanOption(o => o.setName('quiet').setDescription('Make the response only visible to you')))
-    .addSubcommand(sub => sub.setName('decode').setDescription('Read a QR code from an uploaded image')
-      .addAttachmentOption(o => o.setName('image').setDescription('PNG, JPEG, WebP, or GIF image').setRequired(true))
+    .addSubcommand(sub => sub.setName('decode').setDescription('Read a QR code from an image')
+      .addAttachmentOption(o => o.setName('image').setDescription('PNG, JPEG, WebP, or GIF image (defaults to the most recent one in the channel)').setRequired(false))
+      .addStringOption(o => o.setName('link').setDescription('An image URL to read instead of an attachment').setRequired(false).setMaxLength(500))
       .addBooleanOption(o => o.setName('quiet').setDescription('Make the response only visible to you'))),
 
   async execute(interaction) {
@@ -65,9 +68,18 @@ module.exports = {
           .setFooter({ text: 'Scan carefully—always verify links before opening them' });
         return interaction.editReply({ embeds: [embed], files: [file] });
       }
-      const image = interaction.options.getAttachment('image', true);
-      if (image.size > MAX_IMAGE_SIZE) return interaction.editReply('That image is larger than 8 MB.');
-      if (!image.contentType?.startsWith('image/')) return interaction.editReply('Upload a PNG, JPEG, WebP, or GIF image.');
+      let image;
+      try {
+        image = await requireMedia(interaction, {
+          attachmentOption: 'image',
+          userOption: null,
+          noMediaMessage: 'I could not find an image to read. Attach one, reply to a message with one, or paste a link.',
+        });
+      } catch (error) {
+        if (error instanceof MediaNotFoundError) return interaction.editReply(error.message);
+        throw error;
+      }
+      if (Number.isFinite(image.size) && image.size > MAX_IMAGE_SIZE) return interaction.editReply('That image is larger than 8 MB.');
       const result = await decodeQr(image.url);
       if (!result) return interaction.editReply('The QR code contained no readable text.');
       const embed = new EmbedBuilder()

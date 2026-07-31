@@ -8,31 +8,47 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { uploadFile } = require('../../../services/ezhostService');
+const { MediaNotFoundError, requireMedia } = require('../../../services/mediaResolver');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
+
+const MAX_INPUT_BYTES = 5 * 1024 * 1024;
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('togif')
     .setDescription('Convert an image or video to a GIF')
-    .addAttachmentOption(o => o.setName('file').setDescription('The image or video to convert').setRequired(true))
+    .addAttachmentOption(o => o.setName('file').setDescription('The image or video to convert (defaults to the most recent one in the channel)').setRequired(false))
+    .addStringOption(o => o.setName('link').setDescription('A media URL, custom emoji, or user ID to convert instead of an attachment').setRequired(false).setMaxLength(500))
+    .addUserOption(o => o.setName('user').setDescription("Convert this user's avatar").setRequired(false))
     .addBooleanOption(o => o.setName('upload-to-cloud').setDescription('Automatically upload the result to the cloud').setRequired(false))
     .addBooleanOption(o => o.setName('quiet').setDescription('Make the response only visible to you').setRequired(false)),
+
+  prefixAliases: ['gifify', 'tgif'],
 
   async execute(interaction) {
     const quiet = interaction.options.getBoolean('quiet') ?? false;
     const autoUpload = interaction.options.getBoolean('upload-to-cloud') ?? false;
     await interaction.deferReply({ flags: quiet ? 64 : undefined });
 
-    const file = interaction.options.getAttachment('file');
+    let file;
+    try {
+      file = await requireMedia(interaction, {
+        allowVideo: true,
+        noMediaMessage: 'I could not find anything to convert. Attach an image or video, reply to a message with one, paste a link, or mention a user to use their avatar.',
+      });
+    } catch (error) {
+      if (error instanceof MediaNotFoundError) return interaction.editReply(`❌ ${error.message}`);
+      throw error;
+    }
 
-    // 1. Size Limit Check (5MB)
-    if (file.size > 5 * 1024 * 1024) {
+    // 1. Size Limit Check (5MB) — only known when Discord reports the size.
+    if (Number.isFinite(file.size) && file.size > MAX_INPUT_BYTES) {
       return interaction.editReply('❌ File is too large! Please upload a file under 5MB.');
     }
 
-    const isVideo = file.contentType?.startsWith('video/') || /\.(mp4|mov|webm)$/i.test(file.url);
-    const isImage = file.contentType?.startsWith('image/') || /\.(png|jpe?g|webp)$/i.test(file.url);
+    const isVideo = file.contentType?.startsWith('video/') || /\.(mp4|mov|webm|mkv|m4v)(\?|#|$)/i.test(file.url);
+    const isImage = file.contentType?.startsWith('image/') || /\.(png|jpe?g|webp|gif|avif)(\?|#|$)/i.test(file.url);
 
     if (!isVideo && !isImage) {
       return interaction.editReply('❌ Unsupported file type! Please upload an image (PNG, JPEG, WebP) or video (MP4, MOV, WebM).');
@@ -47,8 +63,13 @@ module.exports = {
       tempOut = path.join(os.tmpdir(), `gif_out_${id}.gif`);
 
       if (isImage) {
-        const response = await axios.get(file.url, { responseType: 'arraybuffer', timeout: 30000 });
-        gifBuffer = await sharp(response.data)
+        const response = await axios.get(file.url, {
+          responseType: 'arraybuffer',
+          timeout: 30000,
+          maxContentLength: MAX_INPUT_BYTES,
+        });
+        // `animated` keeps every frame of a source GIF/WebP instead of only the first.
+        gifBuffer = await sharp(response.data, { animated: true })
           .resize({ width: 480, withoutEnlargement: true })
           .gif({ effort: 7, colours: 256 })
           .toBuffer();

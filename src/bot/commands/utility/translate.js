@@ -69,6 +69,7 @@ async function translateText(text, targetLanguage, sourceLanguage = 'auto') {
 }
 
 module.exports = {
+  prefixAliases: ['trans', 'translation'],
   data: new SlashCommandBuilder()
     .setName('translate')
     .setDescription('Translate text or detect its language')

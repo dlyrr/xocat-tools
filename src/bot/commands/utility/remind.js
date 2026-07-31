@@ -41,6 +41,8 @@ function parseWhen(input, now = Date.now()) {
 }
 
 module.exports = {
+  prefixGreedy: 'message',
+  prefixAliases: ['reminder', 'remindme'],
   data: new SlashCommandBuilder()
     .setName('remind')
     .setDescription('Create and manage long-term reminders')

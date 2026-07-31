@@ -44,6 +44,7 @@ function formatNumber(number) {
 }
 
 module.exports = {
+  prefixAliases: ['units', 'convertunit'],
   data: new SlashCommandBuilder()
     .setName('unit')
     .setDescription('Convert length, mass, temperature, volume, speed, or data units')

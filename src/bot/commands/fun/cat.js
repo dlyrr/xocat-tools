@@ -4,6 +4,8 @@ const axios = require('axios');
 const { colors } = require('../../../utils/constants');
 
 module.exports = {
+  prefixGreedy: 'text',
+  prefixAliases: ['kitty', 'kitten', 'cats'],
   data: new SlashCommandBuilder()
     .setName('cat')
     .setDescription('Get random cat content')
