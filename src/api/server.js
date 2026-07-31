@@ -4,15 +4,22 @@
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
-const { YT_DLP, USER_AGENT } = require('../utils/ytdlp');
+const { YT_DLP } = require('../utils/ytdlp');
+const { MediaProbeError, probeMedia } = require('../services/mediaProbe');
+const { createWebRouter } = require('./webRoutes');
 
 function createAPIServer(client) {
   const app = express();
   app.use(cors());
-  app.use(express.json());
 
   const limiter = rateLimit({ windowMs: 60000, max: 60, message: { error: 'Too many requests.' } });
   app.use(limiter);
+
+  // Mounted before the JSON body parser: /web/effect takes raw image bytes and
+  // parses its own body. Everything under /web needs the shared bearer secret.
+  app.use('/web', createWebRouter(client));
+
+  app.use(express.json());
 
   app.get('/health', (req, res) => {
     res.json({
@@ -21,6 +28,9 @@ function createAPIServer(client) {
       bot: client?.user?.tag || 'Not connected',
       guilds: client?.guilds?.cache?.size || 0,
       commands: client?.commands?.size || 0,
+      // Lets the website tell "bot is up but the playground is not configured"
+      // apart from "bot is down" without leaking the secret itself.
+      webApi: !!process.env.WEB_API_SECRET?.trim(),
       timestamp: Date.now(),
     });
   });
@@ -43,54 +53,18 @@ function createAPIServer(client) {
   });
 
   app.post('/scrape', async (req, res) => {
-    const { url } = req.body;
+    const { url } = req.body || {};
     if (!url) return res.status(400).json({ error: 'URL is required in request body' });
 
-    const { execFile } = require('child_process');
-
-    const args = [
-      '--dump-json',
-      '--no-playlist',
-      '--no-warnings',
-      '--format', 'bv*[height<=720]+ba/b[height<=720]/bv*+ba/b',
-      '--user-agent', USER_AGENT,
-      url
-    ];
-
-    execFile(YT_DLP, args, { timeout: 30000 }, (error, stdout, stderr) => {
-      if (error) {
-        console.error('[SCRAPE] yt-dlp error:', stderr?.slice(0, 500));
-        return res.status(500).json({ error: 'Failed to extract media', message: stderr?.slice(0, 300) });
+    try {
+      const media = await probeMedia(url);
+      res.json({ status: 'success', media });
+    } catch (error) {
+      if (error instanceof MediaProbeError) {
+        return res.status(error.status).json({ error: error.message, message: error.detail });
       }
-
-      try {
-        const data = JSON.parse(stdout);
-        const result = {
-          status: 'success',
-          media: {
-            url: data.webpage_url || data.url,
-            direct_link: data.url,
-            title: data.title || data.fulltitle,
-            description: data.description,
-            view_count: data.view_count,
-            like_count: data.like_count,
-            uploader: data.uploader || data.channel || data.creator,
-            uploader_url: data.uploader_url || data.channel_url,
-            thumbnail: data.thumbnail,
-            duration: data.duration,
-            width: data.width,
-            height: data.height,
-            fps: data.fps,
-            filesize: data.filesize || data.filesize_approx,
-            extractor: data.extractor_key || data.extractor,
-            format: data.format,
-          }
-        };
-        res.json(result);
-      } catch (parseErr) {
-        res.status(500).json({ error: 'Failed to parse media data', message: parseErr.message });
-      }
-    });
+      res.status(500).json({ error: 'Failed to extract media', message: error.message });
+    }
   });
 
   // Keep the old GET route for backward compatibility with the command for now

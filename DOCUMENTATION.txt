@@ -111,6 +111,11 @@ DISCORD_GUILD_ID
 API_PORT
   Express API port. Defaults to 3001.
 
+WEB_API_SECRET
+  Shared secret for the /web/* playground routes used by
+  https://xocat.online/bot/playground. Must match BOT_API_SECRET on the
+  xocat.online Pages project. Leave empty to keep those routes disabled.
+
 PREMIUM_USER_IDS
   Optional comma-separated premium user IDs.
 
@@ -191,6 +196,9 @@ scripts/
 
 src/api/server.js
   Express API server with /health, /stats, /scrape, and /api/scrape routes.
+
+src/api/webRoutes.js
+  Authenticated /web/* routes for the xocat.online playground.
 
 src/database/db.js
   sql.js database setup and helper functions.
@@ -631,6 +639,44 @@ GET /api/scrape?url=...
 
 Rate limit:
   60 requests per minute per client.
+
+
+Web playground routes (/web/*)
+------------------------------
+These back https://xocat.online/bot/playground and live in
+src/api/webRoutes.js. They are not for browsers: a Cloudflare Pages Function on
+xocat.online checks the visitor's Discord sign-in and then calls these with a
+shared secret, so the bot's address and the secret both stay server-side.
+
+Every /web route requires:
+
+  Authorization: Bearer <WEB_API_SECRET>
+
+If WEB_API_SECRET is empty the whole router answers 503, so an unconfigured
+deployment is closed rather than open.
+
+GET /web/effects
+  The effect registry as JSON: name, description, category, aliases, whether it
+  always outputs a GIF, its text/amount/font parameters, and its boolean flags.
+  Also returns the font list, the flag names, and the size limits. The website
+  builds its form from this, so promoting or renaming an effect needs no
+  website deploy.
+
+GET /web/guilds
+  The bot's guild IDs. The website intersects them with the visitor's own guild
+  list to enforce "you must share a server with the bot".
+
+POST /web/effect?effect=<name>[&text=&amount=&font=&format=&alpha=&vertical=
+                              &reverse=&bottom=&flip=&caseSensitive=&url=]
+  Body: raw source image bytes, or omit the body and pass ?url= to have the bot
+  download it (through the SSRF guard in src/utils/network.js).
+  Returns the finished image, with details in X-Effect-Name, X-Effect-Format,
+  X-Effect-Width, X-Effect-Height, X-Effect-Frames and X-Effect-Notes.
+  Limits: 8 MB in, 6 MB out, 20 renders per minute. Oversized results are
+  retried at smaller sizes exactly as the Discord commands do.
+
+GET /web/media?url=...
+  The same yt-dlp probe POST /scrape uses (src/services/mediaProbe.js).
 
 
 Command Flow
