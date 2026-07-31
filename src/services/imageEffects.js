@@ -622,12 +622,16 @@ async function memeEffect(image, params) {
   const size = width / 9;
   const overlays = [];
 
+  // esmBot renders meme text bold for every font except impact, whose face is
+  // already heavy enough.
+  const bold = font !== 'impact';
+
   if (top) {
-    const rendered = await renderOutlinedText(top, { size, width, font, radius: size / 18 });
+    const rendered = await renderOutlinedText(top, { size, width, font, bold, radius: size / 18 });
     overlays.push({ input: rendered.buffer, left: Math.round((width - rendered.width) / 2), top: 0 });
   }
   if (bottom) {
-    const rendered = await renderOutlinedText(bottom, { size, width, font, radius: size / 18 });
+    const rendered = await renderOutlinedText(bottom, { size, width, font, bold, radius: size / 18 });
     overlays.push({
       input: rendered.buffer,
       left: Math.round((width - rendered.width) / 2),
@@ -658,11 +662,11 @@ async function motivateEffect(image, params) {
 
   const captions = [];
   if (top) {
-    const rendered = await renderText(top, { size, width: textWidth, font, foreground: 'white', align: 'centre' });
+    const rendered = await renderText(top, { size, width: textWidth, font, foreground: 'white', align: 'centre', bold: false });
     captions.push({ ...rendered, pad: Math.round(size / 4) });
   }
   if (bottom) {
-    const rendered = await renderText(bottom, { size: size * 0.4, width: textWidth, font, foreground: 'white', align: 'centre' });
+    const rendered = await renderText(bottom, { size: size * 0.4, width: textWidth, font, foreground: 'white', align: 'centre', bold: false });
     captions.push({ ...rendered, pad: Math.round((size * 0.4) / 4) });
   }
   if (!captions.length) throw new Error('Provide the poster text. Separate the title and subtitle with a comma.');
@@ -718,6 +722,8 @@ async function captionEffect(image, params) {
     font,
     foreground: 'black',
     align: second ? 'left' : 'centre',
+    // esmBot's caption asks for bold; its caption2 uses the face as-is.
+    bold: second ? false : true,
   });
 
   const barHeight = rendered.height + Math.round(size);
@@ -762,7 +768,7 @@ async function snapchatEffect(image, params) {
   const size = width / 20;
   const textWidth = width - Math.floor(width / 25) * 2;
 
-  const rendered = await renderText(text, { size, width: textWidth, font: 'helvetica', foreground: 'white', align: 'centre' });
+  const rendered = await renderText(text, { size, width: textWidth, font: 'helvetica', foreground: 'white', align: 'centre', bold: false });
   const barHeight = rendered.height + Math.round(width / 25);
   const bar = await sharp({
     create: { width, height: barHeight, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0.7 } },

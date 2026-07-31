@@ -10,23 +10,84 @@
 //   * a JS implementation of libvips' `mapim` displacement remapping
 //   * outlined text rendering (the "Impact meme" look)
 // ============================================================
+const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 
 const FONT_DIR = path.join(__dirname, '..', '..', 'assets', 'fonts');
 
-// Fonts that ship with the repo, plus metric-compatible system substitutes for
-// the proprietary families esmBot names (Impact, Times, Helvetica Neue).
-const FONTS = {
-  impact: { family: 'Anton', file: path.join(FONT_DIR, 'Anton-Regular.ttf'), weight: 'normal' },
-  futura: { family: 'Futura Cyrillic Extra Bold', file: path.join(FONT_DIR, 'FuturaCyrillicExtraBold.ttf'), weight: 'normal' },
-  times: { family: 'Liberation Serif', file: null, weight: 'bold' },
-  helvetica: { family: 'Liberation Sans', file: null, weight: 'normal' },
+/**
+ * Font definitions, matching esmBot's set.
+ *
+ * `file` names a font in assets/fonts. `family` must be a family recorded
+ * inside that file, because libvips registers the file with fontconfig and then
+ * resolves it by family — and it must contain no Pango style keywords (Bold,
+ * Black, Condensed, Light, Italic, …). Pango's font-description parser strips
+ * those words out of the family and treats them as weight/stretch requests, so
+ * asking for "Futura Extra Black Condensed" actually asks for family "Futura"
+ * at ultra-black weight, which misses the real face and gets a synthesised
+ * fake-bold instead. caption.otf conveniently also declares the plain family
+ * "Futura", which is what esmBot itself asks for.
+ *
+ * `weight` is the face's natural weight, used when a caller does not ask for a
+ * specific one. `fallback` names the entry to use when the file is absent, so
+ * deleting a font degrades gracefully instead of rendering nothing.
+ *
+ * See assets/fonts/README.txt for where each file came from and its licence.
+ */
+const FONT_DEFINITIONS = {
+  // esmBot's caption default: Futura Extra Black Condensed, the classic meme
+  // caption face. Requested as plain "Futura" — see the note above.
+  futura: { family: 'Futura', file: 'caption.otf', weight: 'normal', fallback: 'futura-pt' },
+  // esmBot's caption2 (iFunny style) and snapchat default.
+  helvetica: { family: 'Helvetica Neue', file: 'caption2.ttf', weight: 'normal', fallback: 'arial' },
+  // Impact cannot be redistributed; Anton is the closest free substitute.
+  impact: { family: 'Anton', file: 'Anton-Regular.ttf', weight: 'normal', fallback: 'sans' },
+  roboto: { family: 'Roboto', file: 'reddit.ttf', weight: 'normal', fallback: 'sans' },
+  ubuntu: { family: 'Ubuntu', file: 'Ubuntu.ttf', weight: 'normal', fallback: 'sans' },
+  // Metric-compatible system substitutes for the families esmBot resolves
+  // through fontconfig rather than bundling.
   arial: { family: 'Liberation Sans', file: null, weight: 'bold' },
+  times: { family: 'Liberation Serif', file: null, weight: 'bold' },
+  // The caption font this bot used before the esmBot face was vendored.
+  'futura-pt': { family: 'Futura PT', file: 'FuturaCyrillicExtraBold.ttf', weight: 'normal', fallback: 'sans' },
   serif: { family: 'DejaVu Serif', file: null, weight: 'bold' },
   sans: { family: 'DejaVu Sans', file: null, weight: 'bold' },
   mono: { family: 'DejaVu Sans Mono', file: null, weight: 'bold' },
 };
+
+/** Resolve file paths once, following `fallback` when a font is not installed. */
+function buildFontTable() {
+  const table = {};
+  for (const name of Object.keys(FONT_DEFINITIONS)) {
+    const seen = new Set();
+    let current = name;
+    let resolved = null;
+
+    while (current && !seen.has(current)) {
+      seen.add(current);
+      const definition = FONT_DEFINITIONS[current];
+      if (!definition) break;
+
+      if (!definition.file) {
+        resolved = { family: definition.family, file: null, weight: definition.weight };
+        break;
+      }
+      const file = path.join(FONT_DIR, definition.file);
+      if (fs.existsSync(file)) {
+        resolved = { family: definition.family, file, weight: definition.weight };
+        break;
+      }
+      current = definition.fallback;
+    }
+
+    // Last resort: let pango pick a generic face rather than fail outright.
+    table[name] = resolved || { family: 'sans-serif', file: null, weight: 'bold' };
+  }
+  return table;
+}
+
+const FONTS = buildFontTable();
 
 const ALLOWED_FONTS = Object.keys(FONTS);
 
@@ -47,10 +108,20 @@ function resolveFont(name) {
   return FONTS[String(name || '').toLowerCase()] || FONTS.impact;
 }
 
-/** Build the `font` string and optional `fontfile` for sharp's text input. */
-function fontOptions(name, size) {
+/**
+ * Build the `font` string and optional `fontfile` for sharp's text input.
+ *
+ * @param {string} name font key
+ * @param {number} size point size
+ * @param {object} [options]
+ * @param {boolean} [options.bold] force bold on or off; omit to use the face's
+ *   natural weight. esmBot varies this per effect: caption and meme ask for
+ *   bold, caption2 and motivate do not.
+ */
+function fontOptions(name, size, options = {}) {
   const font = resolveFont(name);
-  const descriptor = `${font.family} ${font.weight === 'bold' ? 'Bold ' : ''}${Math.max(6, Math.round(size))}`;
+  const bold = options.bold ?? (font.weight === 'bold');
+  const descriptor = `${font.family} ${bold ? 'Bold ' : ''}${Math.max(6, Math.round(size))}`;
   return font.file ? { font: descriptor, fontfile: font.file } : { font: descriptor };
 }
 
@@ -329,13 +400,13 @@ function remapFrames(image, mapFn, options = {}) {
  * dilate it, then stacks the text back on top).
  */
 async function renderOutlinedText(text, options = {}) {
-  const { size = 48, width = 512, font = 'impact', align = 'centre', foreground = 'white' } = options;
+  const { size = 48, width = 512, font = 'impact', align = 'centre', foreground = 'white', bold } = options;
   const radius = Math.max(1, options.radius ?? size / 18);
 
   const rendered = await sharp({
     text: {
       text: `<span foreground="${foreground}">${escapeMarkup(text)}</span>`,
-      ...fontOptions(font, size),
+      ...fontOptions(font, size, { bold }),
       width,
       align,
       rgba: true,
@@ -369,13 +440,13 @@ async function renderOutlinedText(text, options = {}) {
 
 /** Render plain text with an optional solid background behind the glyphs. */
 async function renderText(text, options = {}) {
-  const { size = 48, width = 512, font = 'impact', align = 'centre', foreground = 'black', background } = options;
+  const { size = 48, width = 512, font = 'impact', align = 'centre', foreground = 'black', background, bold } = options;
   const span = background
     ? `<span foreground="${foreground}" background="${background}">${escapeMarkup(text)}</span>`
     : `<span foreground="${foreground}">${escapeMarkup(text)}</span>`;
 
   const buffer = await sharp({
-    text: { text: span, ...fontOptions(font, size), width, align, rgba: true },
+    text: { text: span, ...fontOptions(font, size, { bold }), width, align, rgba: true },
   }).png().toBuffer();
   const metadata = await sharp(buffer).metadata();
   return { buffer, width: metadata.width, height: metadata.height };
