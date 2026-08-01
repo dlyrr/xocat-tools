@@ -7,6 +7,7 @@ const { createClient } = require('./src/bot/client');
 const { createAPIServer } = require('./src/api/server');
 const { initDatabase, dbAll, dbRun } = require('./src/database/db');
 const { startRobloxUpdateWatcher } = require('./src/services/robloxUpdateService');
+const { startTunnel } = require('./src/services/tunnelService');
 const logger = require('./src/utils/logger');
 
 function resolveAPIPort() {
@@ -62,6 +63,16 @@ async function main() {
     logger.warn('boot', 'Another bot instance already owns the configured API port · exiting before Discord login');
     process.exit(0);
     return;
+  }
+
+  // Started after the API is listening so the connector never advertises a
+  // hostname that would 502, and before the Discord login so a slow gateway
+  // handshake does not delay the tunnel coming up.
+  const tunnel = startTunnel();
+  if (tunnel) {
+    for (const signal of ['SIGINT', 'SIGTERM']) {
+      process.once(signal, () => tunnel.stop());
+    }
   }
 
   logger.info('discord', 'Authenticating with Discord gateway…');

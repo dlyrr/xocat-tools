@@ -116,6 +116,16 @@ WEB_API_SECRET
   https://xocat.online/bot/playground. Must match BOT_API_SECRET on the
   xocat.online Pages project. Leave empty to keep those routes disabled.
 
+TUNNEL_TOKEN
+  Cloudflare Tunnel connector token. When set, the bot runs cloudflared itself
+  as a child process, so the API gets an HTTPS hostname without exposing this
+  host's IP and without needing a second startup command on the panel. Leave
+  empty to skip the tunnel.
+
+CLOUDFLARED_PATH
+  Override the cloudflared binary. Defaults to bin/cloudflared.exe on Windows,
+  bin/cloudflared-linux-amd64 on Linux, or whatever is on PATH.
+
 PREMIUM_USER_IDS
   Optional comma-separated premium user IDs.
 
@@ -199,6 +209,9 @@ src/api/server.js
 
 src/api/webRoutes.js
   Authenticated /web/* routes for the xocat.online playground.
+
+src/services/tunnelService.js
+  Supervises a cloudflared child process when TUNNEL_TOKEN is set.
 
 src/database/db.js
   sql.js database setup and helper functions.
