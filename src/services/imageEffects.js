@@ -876,8 +876,8 @@ async function watermarkEffect(image, params) {
   return mapFrames(image, frame => frame.composite([{ input: faded, gravity }]));
 }
 
-// Caption-bar detection tuning. A bar is a run of rows where nearly every
-// pixel is close to pure white or pure black.
+// Caption-bar detection tuning. A bar is a run of rows built only from the bar
+// colour, the text colour, and the blends between them.
 const BAR_UNIFORM_THRESHOLD = 0.8;
 const BAR_MAX_CROP_FRACTION = 0.4;
 const BAR_MIN_HEIGHT = 12;
@@ -886,12 +886,23 @@ const BAR_MIN_HEIGHT = 12;
 // failing row. `crop` only advances on a pass, so a genuine boundary rolls back
 // to the last confirmed-flat row.
 const BAR_FAIL_TOLERANCE = 3;
+// Resampling a caption down to fit an upload limit turns every glyph edge into
+// neutral grey, which is neither near-white nor near-black. Counting only the
+// two extremes dropped text rows to ~0.5 and ended the scan a third of the way
+// into the bar, leaving a clipped strip of caption behind. Blends count now.
+const BAR_BLEND_SPREAD = 14;
+// Counting blends alone is not enough: a photograph of concrete is also neutral
+// grey and would run the scan straight past the bar into the image. So a row
+// must also hold a real share of the bar's own colour. Measured on a downscaled
+// caption, bar rows never fell below 0.36 while the photograph below sat at
+// 0.000, so this sits well clear of both.
+const BAR_COLOUR_MIN = 0.2;
 
-function scanBarEdge(uniformity, maxCrop, indexAt) {
+function scanBarEdge(maxCrop, rowIsBar) {
   let crop = 0;
   let failRun = 0;
   for (let offset = 0; offset < maxCrop; offset += 1) {
-    if (uniformity[indexAt(offset)] >= BAR_UNIFORM_THRESHOLD) {
+    if (rowIsBar(offset)) {
       failRun = 0;
       crop = offset + 1;
     } else if (++failRun >= BAR_FAIL_TOLERANCE) {
@@ -919,25 +930,47 @@ async function uncaptionEffect(image, params) {
   // A caption bar occupies the same rows on every frame, so one pass is enough.
   const first = image.frames[0];
 
+  // Three measures per row: how much of it is light, how much is dark, and how
+  // much could belong to a bar at all — the two extremes plus the neutral blends
+  // that anti-aliasing leaves between them.
+  const lightShare = new Array(height);
+  const darkShare = new Array(height);
   const uniformity = new Array(height);
+
   for (let y = 0; y < height; y += 1) {
-    let flat = 0;
+    let light = 0;
+    let dark = 0;
+    let belongs = 0;
     const rowStart = y * width * 4;
+
     for (let x = 0; x < width; x += 1) {
       const offset = rowStart + x * 4;
       const red = first[offset];
       const green = first[offset + 1];
       const blue = first[offset + 2];
-      const light = red >= nearWhite && green >= nearWhite && blue >= nearWhite;
-      const dark = red <= nearBlack && green <= nearBlack && blue <= nearBlack;
-      if (light || dark) flat += 1;
+      const isLight = red >= nearWhite && green >= nearWhite && blue >= nearWhite;
+      const isDark = red <= nearBlack && green <= nearBlack && blue <= nearBlack;
+      const spread = Math.max(red, green, blue) - Math.min(red, green, blue);
+
+      if (isLight) light += 1;
+      if (isDark) dark += 1;
+      if (isLight || isDark || spread <= BAR_BLEND_SPREAD) belongs += 1;
     }
-    uniformity[y] = flat / width;
+
+    lightShare[y] = light / width;
+    darkShare[y] = dark / width;
+    uniformity[y] = belongs / width;
   }
 
+  // Each edge takes its polarity from its own outermost row, so a light bar on
+  // top and a dark one underneath are read on their own terms.
+  const topShare = lightShare[0] >= darkShare[0] ? lightShare : darkShare;
+  const bottomShare = lightShare[height - 1] >= darkShare[height - 1] ? lightShare : darkShare;
+  const rowIsBar = (share, index) => share[index] >= BAR_COLOUR_MIN && uniformity[index] >= BAR_UNIFORM_THRESHOLD;
+
   const maxCrop = Math.floor(height * BAR_MAX_CROP_FRACTION);
-  let top = scanBarEdge(uniformity, maxCrop, offset => offset);
-  let bottom = scanBarEdge(uniformity, maxCrop, offset => height - 1 - offset);
+  let top = scanBarEdge(maxCrop, offset => rowIsBar(topShare, offset));
+  let bottom = scanBarEdge(maxCrop, offset => rowIsBar(bottomShare, height - 1 - offset));
   if (top < BAR_MIN_HEIGHT) top = 0;
   if (bottom < BAR_MIN_HEIGHT) bottom = 0;
 

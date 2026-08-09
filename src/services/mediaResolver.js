@@ -299,6 +299,36 @@ async function requireMedia(interaction, options = {}) {
 }
 
 /**
+ * Discord signs its attachment URLs and refuses unsigned ones with a 404, so
+ * "Could not download that file" is a misleading way to report the single most
+ * common cause: a link typed or copied without its `?ex=&is=&hm=` query string.
+ * Naming it saves the person guessing at a file that is plainly still there.
+ */
+function describeDownloadFailure(url, status) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return `Could not download that file (HTTP ${status}).`;
+  }
+
+  const isDiscordCdn = /(^|\.)(cdn\.discordapp\.com|media\.discordapp\.net)$/i.test(parsed.hostname);
+  const isSigned = parsed.searchParams.has("ex") && parsed.searchParams.has("hm");
+
+  if (status === 404 && isDiscordCdn && !isSigned) {
+    return "That Discord link is missing its signature, so Discord will not serve it — this happens when the URL is retyped or copied as text. "
+      + "Attach the file directly with the `file:` option, or right click the image in Discord and choose Copy Link, which gives a longer URL ending in `?ex=…&is=…&hm=…`. "
+      + "Leaving both options empty also works: the most recent image in the channel is used.";
+  }
+
+  if (status === 404 && isDiscordCdn) {
+    return "Discord no longer serves that attachment — its link has expired, or the message was deleted. Copy the link again, or attach the file with `file:`.";
+  }
+
+  return `Could not download that file (HTTP ${status}).`;
+}
+
+/**
  * Download a resolved media descriptor, enforcing a hard byte ceiling while
  * streaming so an oversized file never lands in memory in full.
  */
@@ -309,7 +339,7 @@ async function downloadMedia(media, { maxBytes = DEFAULT_MAX_BYTES, timeout = 30
 
   const response = await getPublicStream(axios, media.url, { timeout, maxRedirects: 5 });
   if (response.status >= 400) {
-    throw new MediaNotFoundError(`Could not download that file (HTTP ${response.status}).`);
+    throw new MediaNotFoundError(describeDownloadFailure(media.url, response.status));
   }
 
   const chunks = [];
