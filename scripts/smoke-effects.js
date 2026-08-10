@@ -125,6 +125,7 @@ async function main() {
 }
 
 const VARIANTS = [
+  ['caption with emoji', 'caption', { text: 'feelings hurt ☹️', style: 'caption', position: 'top' }],
   ['caption top bar', 'caption', { text: 'top bar', style: 'caption', position: 'top' }],
   ['caption bottom bar', 'caption', { text: 'bottom bar', style: 'caption', position: 'bottom' }],
   ['caption2 bottom', 'caption2', { text: 'ifunny style', style: 'caption2', position: 'bottom' }],

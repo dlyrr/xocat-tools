@@ -163,17 +163,22 @@ function appleEmojiCandidates(emoji) {
   return [...new Set([preferred, bare, lead])].filter(Boolean);
 }
 
+/** Every URL worth trying for one emoji, best first. */
+function appleEmojiUrls(emoji) {
+  return appleEmojiCandidates(emoji).map(name => `${APPLE_EMOJI_BASE}/${name}.png`);
+}
+
 function findUnicodeEmoji(text) {
   const match = UNICODE_EMOJI.exec(text);
   if (!match) return null;
-  const [codepoints, ...fallbacks] = appleEmojiCandidates(match[0]);
-  if (!codepoints) return null;
-  return describe(`${APPLE_EMOJI_BASE}/${codepoints}.png`, {
-    name: `${codepoints}.png`,
+  const [url, ...fallbackUrls] = appleEmojiUrls(match[0]);
+  if (!url) return null;
+  return describe(url, {
+    name: guessName(url),
     contentType: 'image/png',
     source: 'emoji',
     animated: false,
-    fallbackUrls: fallbacks.map(name => `${APPLE_EMOJI_BASE}/${name}.png`),
+    fallbackUrls,
   });
 }
 
@@ -454,8 +459,10 @@ async function fetchMedia(interaction, options = {}) {
 
 module.exports = {
   MediaNotFoundError,
+  UNICODE_EMOJI,
   appleEmojiCandidates,
   appleEmojiCodepoints,
+  appleEmojiUrls,
   avatarUrl,
   downloadMedia,
   fetchMedia,

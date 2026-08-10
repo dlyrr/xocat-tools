@@ -453,6 +453,19 @@ Shared options
             Black, Condensed, Light, Italic). Pango strips those out of the
             family and reinterprets them as weight/stretch requests, which
             misses the real face and renders a synthesised fake-bold instead.
+
+            Emoji in caption text are drawn as Apple artwork rather than left
+            to the host's emoji font, which would otherwise give Segoe on a
+            Windows box, a monochrome outline on a bare Linux one, and a blank
+            box on a machine with no emoji font at all. src/utils/emojiText.js
+            replaces each emoji with a one-em marker square before the string
+            reaches Pango, then composites the artwork into wherever that
+            square landed, so Pango still does the wrapping and alignment.
+            Artwork is fetched once per emoji and cached for the process's
+            life; one that cannot be fetched leaves a gap rather than failing
+            the command. A lone character that defaults to text presentation
+            (© ™ ‼) stays as text — only a picker's variation selector, a skin
+            tone, a keycap, or a ZWJ join makes it artwork.
   format    Force gif, png, or webp output.
 
 Limits

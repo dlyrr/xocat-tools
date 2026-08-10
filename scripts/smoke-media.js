@@ -181,6 +181,26 @@ async function main() {
     check('a bare digit is not an emoji', findUnicodeEmoji('.deepfry 1') === null, JSON.stringify(findUnicodeEmoji('.deepfry 1')));
   }
 
+  // 18. Emoji substitution in rendered text.
+  {
+    const { splitEmoji, isPictorial, buildMarkup } = require('../src/utils/emojiText');
+
+    const segments = splitEmoji('hurt ☹️ ok');
+    check('text splits around an emoji', segments.length === 3 && segments[0].text === 'hurt ' && segments[1].emoji === '☹️' && segments[2].text === ' ok', JSON.stringify(segments));
+    check('emoji are numbered in order', splitEmoji('😀 and 🎲').filter(s => s.emoji).map(s => s.index).join() === '0,1', JSON.stringify(splitEmoji('😀 and 🎲')));
+    check('plain text is one segment', splitEmoji('no emoji here').length === 1, JSON.stringify(splitEmoji('no emoji here')));
+
+    check('a picker emoji is pictorial', isPictorial('☹️') === true, '☹️');
+    check('a default-emoji character is pictorial', isPictorial('😀') === true, '😀');
+    check('bare punctuation is not pictorial', isPictorial('©') === false, '©');
+    check('typed punctuation stays as text', splitEmoji('© ™ ‼').length === 1, JSON.stringify(splitEmoji('© ™ ‼')));
+
+    const markup = buildMarkup(splitEmoji('a ☹️ b'), 'foreground="black"');
+    check('markup wraps the whole string', markup.startsWith('<span foreground="black">') && markup.endsWith('</span>'), markup);
+    check('markup swaps the emoji for a marker', markup.includes('<span background="#ff00fe">') && !markup.includes('☹'), markup);
+    check('markup escapes the literal text', buildMarkup(splitEmoji('a & b <c> 😀'), '').includes('a &amp; b &lt;c&gt; '), buildMarkup(splitEmoji('a & b <c> 😀'), ''));
+  }
+
   console.log(`\n${failures} failure(s).`);
   process.exitCode = failures ? 1 : 0;
 }

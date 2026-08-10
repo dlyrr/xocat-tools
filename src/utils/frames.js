@@ -14,6 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 const { GIFEncoder, quantize, applyPalette } = require('gifenc');
+const { escapeMarkup, renderPangoText } = require('./emojiText');
 
 const FONT_DIR = path.join(__dirname, '..', '..', 'assets', 'fonts');
 
@@ -95,15 +96,6 @@ const ALLOWED_FONTS = Object.keys(FONTS);
 const MAX_PIXELS = 40 * 1024 * 1024;
 const DEFAULT_MAX_FRAMES = 60;
 const DEFAULT_MAX_SIZE = 512;
-
-/** Escape text for Pango markup, which libvips' text renderer parses. */
-function escapeMarkup(text) {
-  return String(text ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 function resolveFont(name) {
   return FONTS[String(name || '').toLowerCase()] || FONTS.impact;
@@ -444,15 +436,11 @@ async function renderOutlinedText(text, options = {}) {
   const { size = 48, width = 512, font = 'impact', align = 'centre', foreground = 'white', bold } = options;
   const radius = Math.max(1, options.radius ?? size / 18);
 
-  const rendered = await sharp({
-    text: {
-      text: `<span foreground="${foreground}">${escapeMarkup(text)}</span>`,
-      ...fontOptions(font, size, { bold }),
-      width,
-      align,
-      rgba: true,
-    },
-  }).png().toBuffer();
+  const rendered = await renderPangoText(text, `foreground="${foreground}"`, {
+    ...fontOptions(font, size, { bold }),
+    width,
+    align,
+  });
 
   const pad = Math.ceil(radius * 2) + 2;
   const padded = await sharp(rendered)
@@ -482,13 +470,15 @@ async function renderOutlinedText(text, options = {}) {
 /** Render plain text with an optional solid background behind the glyphs. */
 async function renderText(text, options = {}) {
   const { size = 48, width = 512, font = 'impact', align = 'centre', foreground = 'black', background, bold } = options;
-  const span = background
-    ? `<span foreground="${foreground}" background="${background}">${escapeMarkup(text)}</span>`
-    : `<span foreground="${foreground}">${escapeMarkup(text)}</span>`;
+  const attributes = background
+    ? `foreground="${foreground}" background="${background}"`
+    : `foreground="${foreground}"`;
 
-  const buffer = await sharp({
-    text: { text: span, ...fontOptions(font, size, { bold }), width, align, rgba: true },
-  }).png().toBuffer();
+  const buffer = await renderPangoText(text, attributes, {
+    ...fontOptions(font, size, { bold }),
+    width,
+    align,
+  });
   const metadata = await sharp(buffer).metadata();
   return { buffer, width: metadata.width, height: metadata.height };
 }
