@@ -19,7 +19,7 @@ function parseCustomEmoji(value) {
 
 /**
  * Pull every emoji out of the input. esmBot's `emote` accepts a whole line of
- * them, and unicode emoji resolve through the Twemoji image set.
+ * them, and unicode emoji resolve through the Apple image set.
  */
 function parseEmojiList(value) {
   const input = String(value || '');
@@ -120,7 +120,7 @@ module.exports = {
       .setImage(single.url)
       .setFooter({
         text: single.kind === 'unicode'
-          ? 'Unicode emoji (Twemoji artwork)'
+          ? 'Unicode emoji (Apple artwork)'
           : single.animated ? 'Animated custom emoji' : 'Static custom emoji',
       });
 

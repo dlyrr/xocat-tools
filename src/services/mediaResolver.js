@@ -24,9 +24,18 @@ const CUSTOM_EMOJI = /<(a)?:([\w\d_]+):(\d{15,25})>/;
 const USER_MENTION = /^<@!?(\d{15,25})>$/;
 const BARE_URL = /https?:\/\/\S+/i;
 
-// jsDelivr mirror of the Twemoji asset set, matching what esmBot uses to turn
-// a plain unicode emoji into an image.
-const TWEMOJI_BASE = 'https://cdn.jsdelivr.net/gh/jdecked/twemoji@latest/assets/72x72';
+// A keycap (1️⃣), a two-letter flag (🇯🇵), or an extended pictographic sequence
+// with its ZWJ joins, skin tones, and tag characters (🏴󠁧󠁢󠁳󠁣󠁴󠁿). Keycaps and flags
+// need their own alternatives because digits and regional indicators are not
+// Extended_Pictographic, so the third branch cannot start on one.
+const UNICODE_EMOJI = /[0-9#*]️?⃣|[\u{1F1E6}-\u{1F1FF}]{2}|\p{Extended_Pictographic}(?:️|⃣|[\u{1F3FB}-\u{1F3FF}]|[\u{E0020}-\u{E007F}])*(?:‍\p{Extended_Pictographic}(?:️|[\u{1F3FB}-\u{1F3FF}])*)*/u;
+
+// jsDelivr mirror of the Apple emoji asset set — the artwork iOS and macOS ship.
+// esmBot uses Twemoji here; Apple's set is what people picture when they think
+// "emoji", and at 160px it also beats Twemoji's 72px once an effect scales it up.
+const APPLE_EMOJI_BASE = 'https://cdn.jsdelivr.net/gh/iamcal/emoji-data@master/img-apple-160';
+const SKIN_TONES = [0x1f3fb, 0x1f3ff];
+const VARIATION_SELECTOR = 0xfe0f;
 
 const DEFAULT_MAX_BYTES = 25 * 1024 * 1024;
 const DEFAULT_HISTORY_LIMIT = 50;
@@ -37,7 +46,7 @@ class MediaNotFoundError extends Error {}
  * Build a media descriptor. `contentType` may be undefined for scraped URLs;
  * callers should treat the extension as a hint and validate after download.
  */
-function describe(url, { name, contentType, size, source, animated } = {}) {
+function describe(url, { name, contentType, size, source, animated, fallbackUrls } = {}) {
   return {
     url,
     name: name || guessName(url),
@@ -45,6 +54,9 @@ function describe(url, { name, contentType, size, source, animated } = {}) {
     size: Number.isFinite(size) ? size : undefined,
     source: source || 'unknown',
     animated: animated ?? /\.gif(?:\?|#|$)/i.test(url),
+    // Only emoji set this: alternative spellings of the same picture to try if
+    // the preferred filename is not in the asset set. See appleEmojiCandidates.
+    fallbackUrls: fallbackUrls?.length ? fallbackUrls : undefined,
   };
 }
 
@@ -86,34 +98,82 @@ function emojiUrlFromMatch(match) {
   );
 }
 
+function isSkinTone(point) {
+  return point >= SKIN_TONES[0] && point <= SKIN_TONES[1];
+}
+
 /**
- * Convert a unicode emoji to its Twemoji codepoint filename. Variation
- * selectors are dropped unless the emoji is a keycap sequence, which mirrors
- * the naming scheme Twemoji itself uses.
+ * True when a codepoint draws as text unless a variation selector asks for the
+ * emoji form — ❤ and ♂ and the keycap digits, as opposed to 😀 and ⭐.
  */
-function twemojiCodepoints(emoji) {
-  const points = [...emoji].map(character => character.codePointAt(0));
-  const filtered = points.filter((point, index) => {
-    if (point !== 0xfe0f) return true;
-    // Keycaps (e.g. 1️⃣) keep the variation selector in the Twemoji filename.
-    return points[index + 1] === 0x20e3;
+function needsVariationSelector(point) {
+  const character = String.fromCodePoint(point);
+  return /\p{Emoji}/u.test(character) && !/\p{Emoji_Presentation}/u.test(character);
+}
+
+function formatCodepoints(points) {
+  return points.map(point => point.toString(16).padStart(4, '0')).join('-');
+}
+
+/**
+ * Convert a unicode emoji to its Apple asset filename.
+ *
+ * Twemoji names a file after the codepoints with every variation selector
+ * stripped; Apple's set (via iamcal/emoji-data) keeps FE0F on exactly those
+ * characters that need it to render as a picture at all, and zero-pads each
+ * codepoint to four digits. So ❤️ is `2764-fe0f.png` rather than `2764.png`,
+ * and 1️⃣ is `0031-fe0f-20e3.png` rather than `31-fe0f-20e3.png`.
+ *
+ * Normalising rather than trusting the input matters because both spellings
+ * arrive in practice: a bare `❤` still has to find `2764-fe0f.png`. The one
+ * exception is a skin tone, which forces the emoji form by itself, so the
+ * selector is dropped in front of it (⛹🏽 is `26f9-1f3fd`, not `26f9-fe0f-…`).
+ */
+function appleEmojiCodepoints(emoji) {
+  const points = [...emoji]
+    .map(character => character.codePointAt(0))
+    .filter(point => point !== VARIATION_SELECTOR);
+  if (!points.length) return null;
+
+  const normalised = [];
+  points.forEach((point, index) => {
+    normalised.push(point);
+    if (needsVariationSelector(point) && !isSkinTone(points[index + 1])) {
+      normalised.push(VARIATION_SELECTOR);
+    }
   });
-  if (!filtered.length) return null;
-  return filtered.map(point => point.toString(16)).join('-');
+  return formatCodepoints(normalised);
+}
+
+/**
+ * Filenames to try for one emoji, best first. The asset set is not perfectly
+ * regular and gains sequences with every Unicode release, so rather than let a
+ * single miss become "could not download that file", fall back to the
+ * selector-free spelling and finally to the sequence's leading character — the
+ * same degradation a font performs when it lacks a ligature.
+ */
+function appleEmojiCandidates(emoji) {
+  const preferred = appleEmojiCodepoints(emoji);
+  if (!preferred) return [];
+
+  const points = [...emoji].map(character => character.codePointAt(0));
+  const bare = formatCodepoints(points.filter(point => point !== VARIATION_SELECTOR));
+  const lead = appleEmojiCodepoints(String.fromCodePoint(points[0]));
+
+  return [...new Set([preferred, bare, lead])].filter(Boolean);
 }
 
 function findUnicodeEmoji(text) {
-  // Match extended pictographic sequences including ZWJ joins and skin tones.
-  const pattern = /(\p{Extended_Pictographic}(️|⃣|[\u{1F3FB}-\u{1F3FF}])*(‍\p{Extended_Pictographic}(️|[\u{1F3FB}-\u{1F3FF}])*)*)/u;
-  const match = pattern.exec(text);
+  const match = UNICODE_EMOJI.exec(text);
   if (!match) return null;
-  const codepoints = twemojiCodepoints(match[1]);
+  const [codepoints, ...fallbacks] = appleEmojiCandidates(match[0]);
   if (!codepoints) return null;
-  return describe(`${TWEMOJI_BASE}/${codepoints}.png`, {
+  return describe(`${APPLE_EMOJI_BASE}/${codepoints}.png`, {
     name: `${codepoints}.png`,
     contentType: 'image/png',
     source: 'emoji',
     animated: false,
+    fallbackUrls: fallbacks.map(name => `${APPLE_EMOJI_BASE}/${name}.png`),
   });
 }
 
@@ -330,16 +390,31 @@ function describeDownloadFailure(url, status) {
 
 /**
  * Download a resolved media descriptor, enforcing a hard byte ceiling while
- * streaming so an oversized file never lands in memory in full.
+ * streaming so an oversized file never lands in memory in full. A descriptor
+ * carrying fallbackUrls (emoji) tries each in turn, but reports the failure of
+ * the preferred URL, since that is the one worth naming in an error.
  */
-async function downloadMedia(media, { maxBytes = DEFAULT_MAX_BYTES, timeout = 30000 } = {}) {
+async function downloadMedia(media, options = {}) {
+  const { maxBytes = DEFAULT_MAX_BYTES } = options;
   if (Number.isFinite(media.size) && media.size > maxBytes) {
     throw new MediaNotFoundError(`That file is ${(media.size / 1024 / 1024).toFixed(1)} MB; the limit is ${Math.floor(maxBytes / 1024 / 1024)} MB.`);
   }
 
-  const response = await getPublicStream(axios, media.url, { timeout, maxRedirects: 5 });
+  let firstError;
+  for (const url of [media.url, ...(media.fallbackUrls || [])]) {
+    try {
+      return await downloadFrom(media, url, options);
+    } catch (error) {
+      firstError = firstError || error;
+    }
+  }
+  throw firstError;
+}
+
+async function downloadFrom(media, url, { maxBytes = DEFAULT_MAX_BYTES, timeout = 30000 } = {}) {
+  const response = await getPublicStream(axios, url, { timeout, maxRedirects: 5 });
   if (response.status >= 400) {
-    throw new MediaNotFoundError(describeDownloadFailure(media.url, response.status));
+    throw new MediaNotFoundError(describeDownloadFailure(url, response.status));
   }
 
   const chunks = [];
@@ -361,6 +436,8 @@ async function downloadMedia(media, { maxBytes = DEFAULT_MAX_BYTES, timeout = 30
   const contentType = String(response.headers['content-type'] || '').split(';')[0].trim();
   return {
     ...media,
+    url,
+    fallbackUrls: undefined,
     buffer: Buffer.concat(chunks),
     size: total,
     contentType: media.contentType || contentType || undefined,
@@ -377,6 +454,8 @@ async function fetchMedia(interaction, options = {}) {
 
 module.exports = {
   MediaNotFoundError,
+  appleEmojiCandidates,
+  appleEmojiCodepoints,
   avatarUrl,
   downloadMedia,
   fetchMedia,
@@ -385,5 +464,4 @@ module.exports = {
   looksLikeImage,
   looksLikeVideo,
   requireMedia,
-  twemojiCodepoints,
 };

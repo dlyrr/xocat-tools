@@ -521,8 +521,9 @@ So all of these do the same thing:
   .deepfry @someone
   .deepfry                         (uses the last image posted in the channel)
 
-Unicode emoji resolve to Twemoji artwork. Lottie stickers are skipped, since
-they are vector animations that sharp cannot read.
+Unicode emoji resolve to Apple artwork (the iOS/macOS emoji set, mirrored from
+iamcal/emoji-data at 160px). Lottie stickers are skipped, since they are vector
+animations that sharp cannot read.
 
 Downloads go through src/utils/network.js, which resolves the hostname and
 refuses private, loopback, and link-local addresses at every redirect hop, so a

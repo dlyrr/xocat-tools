@@ -8,7 +8,7 @@
 //   node scripts/smoke-media.js
 // ============================================================
 const { Collection } = require('discord.js');
-const { findMedia, findUnicodeEmoji, twemojiCodepoints } = require('../src/services/mediaResolver');
+const { findMedia, findUnicodeEmoji, appleEmojiCandidates, appleEmojiCodepoints } = require('../src/services/mediaResolver');
 
 let failures = 0;
 function check(label, condition, detail) {
@@ -130,7 +130,7 @@ async function main() {
   // 12. A unicode emoji in the message body.
   {
     const media = await findMedia(interactionOf({ message: messageOf({ content: '.deepfry 🎲' }) }));
-    check('unicode emoji resolves to Twemoji', media?.source === 'emoji' && media.url.endsWith('1f3b2.png'), JSON.stringify(media));
+    check('unicode emoji resolves to Apple artwork', media?.source === 'emoji' && media.url.endsWith('/img-apple-160/1f3b2.png'), JSON.stringify(media));
   }
 
   // 13. The replied-to message.
@@ -163,11 +163,22 @@ async function main() {
     check('returns null when nothing is found', media === null, JSON.stringify(media));
   }
 
-  // 17. Twemoji codepoint naming.
+  // 17. Apple codepoint naming.
   {
-    check('keycap keeps its variation selector', twemojiCodepoints('1️⃣') === '31-fe0f-20e3', twemojiCodepoints('1️⃣'));
-    check('plain emoji drops the variation selector', twemojiCodepoints('❤️') === '2764', twemojiCodepoints('❤️'));
+    check('keycap keeps its variation selector and pads', appleEmojiCodepoints('1️⃣') === '0031-fe0f-20e3', appleEmojiCodepoints('1️⃣'));
+    check('text-presentation emoji keeps its variation selector', appleEmojiCodepoints('❤️') === '2764-fe0f', appleEmojiCodepoints('❤️'));
+    check('a missing variation selector is added back', appleEmojiCodepoints('❤') === '2764-fe0f', appleEmojiCodepoints('❤'));
+    check('emoji-presentation characters take no selector', appleEmojiCodepoints('😀') === '1f600', appleEmojiCodepoints('😀'));
+    check('skin tones suppress the selector', appleEmojiCodepoints('⛹🏽') === '26f9-1f3fd', appleEmojiCodepoints('⛹🏽'));
+    check('skin tones survive on their own', appleEmojiCodepoints('👍🏻') === '1f44d-1f3fb', appleEmojiCodepoints('👍🏻'));
     check('ZWJ sequences are joined', findUnicodeEmoji('👨‍👩‍👧')?.url.endsWith('1f468-200d-1f469-200d-1f467.png') === true, findUnicodeEmoji('👨‍👩‍👧')?.url);
+    check('selectors inside a ZWJ sequence are kept', appleEmojiCodepoints('🤦‍♂️') === '1f926-200d-2642-fe0f', appleEmojiCodepoints('🤦‍♂️'));
+    check('an unknown sequence falls back to its lead character', appleEmojiCandidates('👨‍👩‍👧').at(-1) === '1f468', JSON.stringify(appleEmojiCandidates('👨‍👩‍👧')));
+    check('a plain emoji needs no fallbacks', appleEmojiCandidates('😀').length === 1, JSON.stringify(appleEmojiCandidates('😀')));
+    check('keycaps are matched', findUnicodeEmoji('.deepfry 1️⃣')?.url.endsWith('0031-fe0f-20e3.png') === true, findUnicodeEmoji('.deepfry 1️⃣')?.url);
+    check('flags are matched', findUnicodeEmoji('.deepfry 🇯🇵')?.url.endsWith('1f1ef-1f1f5.png') === true, findUnicodeEmoji('.deepfry 🇯🇵')?.url);
+    check('tag sequences are matched', findUnicodeEmoji('🏴󠁧󠁢󠁳󠁣󠁴󠁿')?.url.endsWith('1f3f4-e0067-e0062-e0073-e0063-e0074-e007f.png') === true, findUnicodeEmoji('🏴󠁧󠁢󠁳󠁣󠁴󠁿')?.url);
+    check('a bare digit is not an emoji', findUnicodeEmoji('.deepfry 1') === null, JSON.stringify(findUnicodeEmoji('.deepfry 1')));
   }
 
   console.log(`\n${failures} failure(s).`);
